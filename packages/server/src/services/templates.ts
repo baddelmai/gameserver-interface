@@ -35,7 +35,7 @@ export class TemplateService {
    * des Betreibers nicht zurücksetzen — das wäre der teuerste Fehler in diesem
    * Entwurf, weil er lautlos passiert und erst beim nächsten Containerbau auffällt.
    */
-  seedAndLoad(): { seeded: string[]; backfilled: string[] } {
+  seedAndLoad(): { seeded: string[]; backfilled: string[]; migrated: string[] } {
     const now = new Date().toISOString();
     const seeded: string[] = [];
 
@@ -50,8 +50,9 @@ export class TemplateService {
     }
 
     const backfilled = this.backfillWorld();
+    const migrated = this.migrateValheimWorldFormat();
     this.reload();
-    return { seeded, backfilled };
+    return { seeded, backfilled, migrated };
   }
 
   /**
@@ -97,6 +98,47 @@ export class TemplateService {
       backfilled.push(definition.id);
     }
     return backfilled;
+  }
+
+  /**
+   * Hebt eine bestehende Valheim-Zeile vom alten `.fwl`/`.db`-Dateipaar auf das
+   * seit Valheim 1.0 gültige Weltverzeichnis.
+   *
+   * Ein reines `backfillWorld()` reicht hier nicht: Das Feld `world` gab es bei
+   * Valheim schon vorher, nur mit anderer Form — Seeding fasst es deshalb nie
+   * an, und jede vor diesem Umbau angelegte Installation bliebe für immer beim
+   * alten Format stehen. Der Weltaustausch fände nie das neue Verzeichnis, weil
+   * er nach `<Weltname>.fwl` sucht statt nach `<Weltname>/`.
+   *
+   * Erkannt wird die alte Form eng am `.fwl`-Suffix — dem einzigen Teil, den
+   * eine eigene Vorlage kaum zufällig träfe. Ein Betreiber, der `world` bei
+   * Valheim selbst verändert hat, hätte damit kaum dasselbe Suffix gewählt;
+   * träfe es doch zu, überschreibt die Migration nur mitgelieferte Zeilen
+   * (`builtin`), nie eine, die als eigene Vorlage gespeichert wurde.
+   */
+  private migrateValheimWorldFormat(): string[] {
+    const definition = BUILTIN_DEFINITIONS.find((d) => d.id === 'valheim');
+    if (!definition?.world) return [];
+
+    const row = this.store.getTemplateRow('valheim');
+    if (!row || row.builtin !== 1) return [];
+
+    let stored: Record<string, unknown>;
+    try {
+      stored = JSON.parse(row.definition) as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+
+    const world = stored.world as { parts?: unknown[] } | undefined;
+    const isOldShape = Array.isArray(world?.parts) && world.parts.some(
+      (part) => typeof part === 'object' && part !== null && (part as { suffix?: unknown }).suffix === '.fwl',
+    );
+    if (!isOldShape) return [];
+
+    stored.world = definition.world;
+    this.store.upsertTemplate('valheim', JSON.stringify(stored), true, row.updated_at);
+    return ['valheim'];
   }
 
   /** Liest alle Vorlagen aus der Datenbank und ersetzt die Registry. */
