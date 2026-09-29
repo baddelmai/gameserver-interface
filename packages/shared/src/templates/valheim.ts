@@ -153,20 +153,18 @@ export const valheimDefinition: TemplateDefinition = {
   modExtensions: ['.dll'],
 
   /*
-   * Eine Valheim-Welt sind zwei Dateien: `.fwl` trägt Name und Seed, `.db` die
-   * Karte. Eine ohne die andere ergibt eine leere Welt. Die `.old`-Kopien
-   * schreibt der Server bei jedem Speichern — sie reisen mit, sind aber nicht
-   * nötig.
+   * Seit Valheim 1.0 ist eine Welt kein Dateipaar mehr, sondern ein
+   * Verzeichnis: `worlds_local/<Weltname>/` enthält mehrere Generationen aus
+   * `_main.N.fwl2`, `_main.N.db2`, `_main.N.chunks` und `_main.N.ok` sowie ein
+   * `.chunk` je Geländestück; N zählt bei jedem Speichern hoch, geladen wird
+   * die höchste Generation mit vorhandener `.ok`-Datei. Eine ältere Welt aus
+   * dem `.fwl`/`.db`-Paar liegt bis zum nächsten Speichern unverändert daneben
+   * und wird dann vom Server selbst in dieses Format überführt.
    */
   world: {
     parent: '/config/worlds_local',
     name: { kind: 'field', field: 'worldName' },
-    parts: [
-      { suffix: '.fwl', type: 'file', required: true },
-      { suffix: '.db', type: 'file', required: true },
-      { suffix: '.fwl.old', type: 'file', required: false },
-      { suffix: '.db.old', type: 'file', required: false },
-    ],
+    parts: [{ suffix: '', type: 'dir', required: true }],
     markers: [],
     accept: [],
   },

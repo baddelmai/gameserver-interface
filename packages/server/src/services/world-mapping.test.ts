@@ -1,5 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { getTemplate, loadBuiltinTemplates, worldTarget, type WorldTarget } from '@gsp/shared';
+import {
+  compileTemplate,
+  getTemplate,
+  loadBuiltinTemplates,
+  minecraftDefinition,
+  worldTarget,
+  type TemplateDefinition,
+  type WorldTarget,
+} from '@gsp/shared';
 import { MappingError, isDangerous, mapArchive } from './world-mapping.js';
 
 /**
@@ -14,6 +22,19 @@ import { MappingError, isDangerous, mapArchive } from './world-mapping.js';
 function target(templateId: string, values: Record<string, string>): WorldTarget {
   const t = worldTarget(getTemplate(templateId), values);
   if (!t) throw new Error(`${templateId} hat keine Weltangabe`);
+  return t;
+}
+
+/**
+ * Ein Weltblock ohne Bezug zu einer echten Vorlage — für Verhalten, das keine
+ * mitgelieferte Vorlage mehr in dieser Form zeigt (Suffix-Vorrang bei
+ * überlappenden `.old`-Endungen), seit Valheim 1.0 auf ein Weltverzeichnis
+ * umgestellt hat.
+ */
+function syntheticTarget(world: TemplateDefinition['world'], values: Record<string, string>): WorldTarget {
+  const definition = { ...minecraftDefinition, world } as TemplateDefinition;
+  const t = worldTarget(compileTemplate(definition), values);
+  if (!t) throw new Error('Testvorlage hat keine Weltangabe');
   return t;
 }
 
@@ -105,11 +126,32 @@ describe('Minecraft — Verzeichnis mit Geschwistern', () => {
   });
 });
 
-describe('Valheim — Dateigruppe mit gemeinsamem Stamm', () => {
-  const valheim = () => target('valheim', { worldName: 'Midgard' });
+describe('Dateigruppe mit gemeinsamem Stamm (Suffix-Vorrang)', () => {
+  /*
+   * Diese Form — mehrere Dateiendungen mit gemeinsamem Stamm plus `.old`-Kopien
+   * — hatte bis Valheim 1.0 die Valheim-Vorlage; seit dem Umstieg auf ein
+   * Weltverzeichnis (siehe unten) bringt keine mitgelieferte Vorlage sie mehr
+   * mit. Der Fall bleibt trotzdem möglich — deshalb hier synthetisch geprüft.
+   */
+  const dateipaar = () =>
+    syntheticTarget(
+      {
+        parent: '/config/worlds_local',
+        name: { kind: 'field', field: 'worldName' },
+        parts: [
+          { suffix: '.fwl', type: 'file', required: true },
+          { suffix: '.db', type: 'file', required: true },
+          { suffix: '.fwl.old', type: 'file', required: false },
+          { suffix: '.db.old', type: 'file', required: false },
+        ],
+        markers: [],
+        accept: [],
+      },
+      { worldName: 'Midgard' },
+    );
 
   it('benennt den Stamm auf den der Instanz um', () => {
-    expect(mapArchive(['Welt.fwl', 'Welt.db'], valheim())).toEqual([
+    expect(mapArchive(['Welt.fwl', 'Welt.db'], dateipaar())).toEqual([
       { source: 'Welt.fwl', target: 'Midgard.fwl' },
       { source: 'Welt.db', target: 'Midgard.db' },
     ]);
@@ -120,7 +162,7 @@ describe('Valheim — Dateigruppe mit gemeinsamem Stamm', () => {
    * `Welt.db` und legt es als `Midgard.db.db` ab.
    */
   it('ordnet .old-Kopien dem längeren Suffix zu, nicht dem kürzeren', () => {
-    expect(mapArchive(['Welt.fwl', 'Welt.db', 'Welt.db.old'], valheim())).toEqual([
+    expect(mapArchive(['Welt.fwl', 'Welt.db', 'Welt.db.old'], dateipaar())).toEqual([
       { source: 'Welt.fwl', target: 'Midgard.fwl' },
       { source: 'Welt.db', target: 'Midgard.db' },
       { source: 'Welt.db.old', target: 'Midgard.db.old' },
@@ -128,11 +170,31 @@ describe('Valheim — Dateigruppe mit gemeinsamem Stamm', () => {
   });
 
   it('lehnt eine .fwl ohne Karte ab', () => {
-    expect(() => mapArchive(['Welt.fwl'], valheim())).toThrow(/fehlt/);
+    expect(() => mapArchive(['Welt.fwl'], dateipaar())).toThrow(/fehlt/);
   });
 
   it('verweigert die Wahl bei zwei Welten', () => {
-    expect(() => mapArchive(['A.fwl', 'A.db', 'B.fwl', 'B.db'], valheim())).toThrow(/mehrere Welten/);
+    expect(() => mapArchive(['A.fwl', 'A.db', 'B.fwl', 'B.db'], dateipaar())).toThrow(/mehrere Welten/);
+  });
+});
+
+describe('Valheim — Weltverzeichnis seit Version 1.0', () => {
+  const valheim = () => target('valheim', { worldName: 'Midgard' });
+
+  it('nimmt das Weltverzeichnis, wenn es ohne Hülle gepackt wurde', () => {
+    expect(mapArchive(['_main.1.fwl2', '_main.1.db2', '_main.1.chunks', '_main.1.ok'], valheim())).toEqual([
+      { source: '_main.1.fwl2', target: 'Midgard/_main.1.fwl2' },
+      { source: '_main.1.db2', target: 'Midgard/_main.1.db2' },
+      { source: '_main.1.chunks', target: 'Midgard/_main.1.chunks' },
+      { source: '_main.1.ok', target: 'Midgard/_main.1.ok' },
+    ]);
+  });
+
+  it('schneidet eine anders benannte Hülle ab und benennt um', () => {
+    expect(mapArchive(['Welt/_main.1.fwl2', 'Welt/_main.1.db2'], valheim())).toEqual([
+      { source: 'Welt/_main.1.fwl2', target: 'Midgard/_main.1.fwl2' },
+      { source: 'Welt/_main.1.db2', target: 'Midgard/_main.1.db2' },
+    ]);
   });
 });
 
