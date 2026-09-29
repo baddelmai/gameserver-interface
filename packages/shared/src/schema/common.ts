@@ -46,7 +46,7 @@ export function pingColor(ms: number | null): string {
  * in `shared` erreicht Backend und Frontend ohne Build-Kniff — die Versionen in
  * den `package.json` werden mitgezogen, damit sie nicht widersprechen.
  */
-export const PANEL_VERSION = 'v0.3';
+export const PANEL_VERSION = 'v0.3.1';
 
 /** Länge der Verlaufs-Ringpuffer — entspricht den 40 Messpunkten der Sparklines. */
 export const HISTORY_LENGTH = 40;
