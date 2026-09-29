@@ -62,7 +62,25 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(path, { ...init, headers, credentials: 'same-origin' });
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as unknown) : {};
+
+  /*
+   * Ein Reverse-Proxy vor dem Panel antwortet bei einem eigenen Größen- oder
+   * Zeitlimit mit einer HTML-Fehlerseite statt mit JSON — etwa `client_max_body_size`
+   * beim Welt-Upload. Ohne diese Prüfung würde `JSON.parse()` dort mit einem
+   * kryptischen „Unexpected token '<'“ abbrechen, statt einer Meldung, die auf
+   * die eigentliche Ursache zeigt.
+   */
+  let payload: unknown;
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    throw new ApiError(
+      response.ok
+        ? 'Die Antwort war kein JSON — vermutlich hat ein Reverse-Proxy davor die Anfrage abgefangen'
+        : `Fehler ${response.status} — die Antwort war kein JSON, vermutlich von einem Reverse-Proxy davor (etwa dessen Größen- oder Zeitlimit)`,
+      response.status,
+    );
+  }
 
   if (!response.ok) {
     const body = payload as { error?: string; detail?: string; fields?: { field: string; message: string }[] };
