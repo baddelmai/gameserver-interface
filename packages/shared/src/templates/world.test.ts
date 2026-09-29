@@ -90,26 +90,21 @@ describe('erforderlichBeimImport', () => {
   });
 
   /*
-   * Eine `.fwl` trägt Name und Seed, die `.db` die Karte. Eine ohne die andere
-   * ergibt eine leere Welt — deshalb müssen beide kommen, die `.old`-Kopien
-   * dagegen nicht.
+   * Seit Valheim 1.0 liegt die Welt als Verzeichnis vor — die einzelnen
+   * Generationen darin (`_main.N.*`) sind ein Interna des Spiels, keine
+   * eigenen Teile der Vorlage.
    */
-  it('verlangt bei Valheim beide Weltdateien, aber keine .old-Kopie', () => {
+  it('verlangt bei Valheim nur das Weltverzeichnis', () => {
     const target = worldTarget(
       withWorld({
         parent: '/config/worlds_local',
         name: { kind: 'field', field: 'worldName' },
-        parts: [
-          { suffix: '.fwl', type: 'file', required: true },
-          { suffix: '.db', type: 'file', required: true },
-          { suffix: '.fwl.old', type: 'file', required: false },
-          { suffix: '.db.old', type: 'file', required: false },
-        ],
+        parts: [{ suffix: '', type: 'dir', required: true }],
         markers: [],
         accept: [],
       }),
       { worldName: 'Midgard' },
     )!;
-    expect(requiredOnImport(target).map((p) => p.fileName)).toEqual(['Midgard.fwl', 'Midgard.db']);
+    expect(requiredOnImport(target).map((p) => p.fileName)).toEqual(['Midgard']);
   });
 });
