@@ -7,9 +7,6 @@ neue Instanzen aus zwanzig mitgelieferten Vorlagen an — von **Minecraft** übe
 **Counter-Strike 2** und **Rust** bis **Satisfactory**. Weitere kommen ohne
 Codeänderung dazu.
 
-Die Oberfläche setzt den Design-Handoff in `design_handoff_gameserver_panel/`
-um (Variante v2, dunkles Panel).
-
 ## Techstack
 
 | Schicht | Wahl |
