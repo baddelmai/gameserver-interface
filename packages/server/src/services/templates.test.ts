@@ -118,6 +118,64 @@ describe('Vorlagendienst', () => {
     expect(findTemplate('minecraft')?.world?.name).toEqual({ kind: 'const', value: 'eigenewelt' });
   });
 
+  /**
+   * Valheim hat seit 1.0 keine `.fwl`/`.db`-Dateien mehr, sondern ein
+   * Weltverzeichnis — anders als beim reinen Nachrüsten hatte das Feld `world`
+   * hier vorher schon einen Wert, nur in der alten Form. Ohne diese Migration
+   * bliebe eine vor dem Umbau angelegte Installation für immer beim alten
+   * Dateipaar, und der Welt-Reiter suchte am neuen Container nach Dateien, die
+   * es nicht mehr gibt.
+   */
+  it('hebt eine Valheim-Zeile vom alten Dateipaar auf das neue Weltverzeichnis', () => {
+    const old = {
+      ...valheimDefinition,
+      world: {
+        parent: '/config/worlds_local',
+        name: { kind: 'field', field: 'worldName' },
+        parts: [
+          { suffix: '.fwl', type: 'file', required: true },
+          { suffix: '.db', type: 'file', required: true },
+          { suffix: '.fwl.old', type: 'file', required: false },
+          { suffix: '.db.old', type: 'file', required: false },
+        ],
+        markers: [],
+        accept: [],
+      },
+    };
+    const stamp = '2026-01-01T00:00:00.000Z';
+    store.upsertTemplate('valheim', JSON.stringify(old), true, stamp);
+
+    const { migrated } = service.seedAndLoad();
+
+    expect(migrated).toContain('valheim');
+    expect(findTemplate('valheim')?.world?.parts).toEqual([
+      { suffix: '', type: 'dir', required: true },
+    ]);
+    // Der Container ändert sich dadurch nicht — sonst böte die Oberfläche
+    // grundlos „Neu aufbauen“ an.
+    expect(store.getTemplateRow('valheim')?.updated_at).toBe(stamp);
+  });
+
+  it('lässt eine schon migrierte oder eigene Valheim-Zeile in Ruhe', () => {
+    service.seedAndLoad();
+    const own: TemplateDefinition = {
+      ...valheimDefinition,
+      world: {
+        parent: '/config/worlds_local',
+        name: { kind: 'const', value: 'eigenewelt' },
+        parts: [{ suffix: '', type: 'dir', required: true }],
+        markers: [],
+        accept: [],
+      },
+    };
+    service.update('valheim', own);
+
+    const { migrated } = service.seedAndLoad();
+
+    expect(migrated).not.toContain('valheim');
+    expect(findTemplate('valheim')?.world?.name).toEqual({ kind: 'const', value: 'eigenewelt' });
+  });
+
   it('verweigert das Löschen, solange Instanzen darauf beruhen', () => {
     service.seedAndLoad();
     store.insertInstance({
