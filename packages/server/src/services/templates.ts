@@ -50,7 +50,10 @@ export class TemplateService {
     }
 
     const backfilled = this.backfillWorld();
-    const migrated = this.migrateValheimWorldFormat();
+    const migrated = [
+      ...this.migrateValheimWorldFormat(),
+      ...this.migrateEnshroudedRolePermissions(now),
+    ];
     this.reload();
     return { seeded, backfilled, migrated };
   }
@@ -139,6 +142,46 @@ export class TemplateService {
     stored.world = definition.world;
     this.store.upsertTemplate('valheim', JSON.stringify(stored), true, row.updated_at);
     return ['valheim'];
+  }
+
+  /**
+   * Ergänzt eine bestehende Enshrouded-Zeile um die Rechte der Server-Rollen.
+   *
+   * Das Image legt jede Gruppe ohne Rechte an und setzt sie nur über
+   * `SERVER_ROLE_<n>_CAN_*`. Die frühere Vorlage übergab nur Name und Passwort —
+   * wer sich mit dem Admin-Passwort anmeldete, landete zwar in der Gruppe
+   * „Admin“, durfte dort aber weder kicken noch Inventare öffnen.
+   *
+   * Anders als bei Valheim ändert sich hier der Container, deshalb wird
+   * `updated_at` neu gesetzt: Bestehende Instanzen melden „Vorlage geändert“ und
+   * bekommen die Rechte beim nächsten „Neu aufbauen“. Angefasst werden nur
+   * mitgelieferte Zeilen, in denen noch gar keine Rechte-Variable steht — hat
+   * der Betreiber selbst welche eingetragen, bleibt seine Wahl stehen.
+   */
+  private migrateEnshroudedRolePermissions(now: string): string[] {
+    const definition = BUILTIN_DEFINITIONS.find((d) => d.id === 'enshrouded');
+    if (!definition) return [];
+
+    const row = this.store.getTemplateRow('enshrouded');
+    if (!row || row.builtin !== 1) return [];
+
+    let stored: Record<string, unknown>;
+    try {
+      stored = JSON.parse(row.definition) as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(stored.env)) return [];
+
+    const isPermission = (name: unknown): boolean =>
+      typeof name === 'string' && /^SERVER_ROLE_\d+_CAN_/.test(name);
+    const storedEnv = stored.env as { name?: unknown }[];
+    if (storedEnv.some((entry) => isPermission(entry?.name))) return [];
+
+    const permissions = definition.env.filter((entry) => isPermission(entry.name));
+    stored.env = [...storedEnv, ...permissions];
+    this.store.upsertTemplate('enshrouded', JSON.stringify(stored), true, now);
+    return ['enshrouded'];
   }
 
   /** Liest alle Vorlagen aus der Datenbank und ersetzt die Registry. */

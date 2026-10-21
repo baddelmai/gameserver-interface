@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BUILTIN_DEFINITIONS,
+  enshroudedDefinition,
   findTemplate,
   listTemplates,
   minecraftDefinition,
@@ -174,6 +175,46 @@ describe('Vorlagendienst', () => {
 
     expect(migrated).not.toContain('valheim');
     expect(findTemplate('valheim')?.world?.name).toEqual({ kind: 'const', value: 'eigenewelt' });
+  });
+
+  /**
+   * Ohne `SERVER_ROLE_<n>_CAN_*` legt das Image alle Rollen rechtelos an — das
+   * Admin-Passwort griff, brachte aber keine Adminrechte.
+   */
+  it('ergänzt einer alten Enshrouded-Zeile die Rollenrechte', () => {
+    const old = {
+      ...enshroudedDefinition,
+      env: enshroudedDefinition.env.filter((e) => !e.name.includes('_CAN_')),
+    };
+    const stamp = '2026-01-01T00:00:00.000Z';
+    store.upsertTemplate('enshrouded', JSON.stringify(old), true, stamp);
+
+    const { migrated } = service.seedAndLoad();
+
+    expect(migrated).toContain('enshrouded');
+    const names = findTemplate('enshrouded')?.definition.env.map((e) => e.name) ?? [];
+    expect(names).toContain('SERVER_ROLE_0_CAN_KICK_BAN');
+    expect(names).toContain('SERVER_ROLE_0_PASSWORD');
+    // Der Container ändert sich — bestehende Instanzen sollen „Neu aufbauen“ anbieten.
+    expect(store.getTemplateRow('enshrouded')?.updated_at).not.toBe(stamp);
+  });
+
+  it('lässt eigene Enshrouded-Rechte in Ruhe', () => {
+    service.seedAndLoad();
+    const own: TemplateDefinition = {
+      ...enshroudedDefinition,
+      env: [
+        ...enshroudedDefinition.env.filter((e) => !e.name.includes('_CAN_')),
+        { name: 'SERVER_ROLE_0_CAN_KICK_BAN', source: { kind: 'const', value: 'false' }, trim: false, omitWhenEmpty: false },
+      ],
+    };
+    service.update('enshrouded', own);
+
+    const { migrated } = service.seedAndLoad();
+
+    expect(migrated).not.toContain('enshrouded');
+    const names = findTemplate('enshrouded')?.definition.env.map((e) => e.name) ?? [];
+    expect(names.filter((n) => n.includes('_CAN_'))).toEqual(['SERVER_ROLE_0_CAN_KICK_BAN']);
   });
 
   it('verweigert das Löschen, solange Instanzen darauf beruhen', () => {

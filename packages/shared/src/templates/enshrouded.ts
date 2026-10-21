@@ -113,6 +113,23 @@ export const enshroudedDefinition: TemplateDefinition = {
     { name: 'SERVER_ROLE_0_NAME', source: { kind: 'const', value: 'Admin' }, trim: false, omitWhenEmpty: false },
     { name: 'SERVER_ROLE_1_NAME', source: { kind: 'const', value: 'Friend' }, trim: false, omitWhenEmpty: false },
     { name: 'SERVER_ROLE_2_NAME', source: { kind: 'const', value: 'Guest' }, trim: false, omitWhenEmpty: false },
+    // Rechte je Rolle. Ohne diese Variablen legt das Image jede Gruppe ohne
+    // Rechte an — das Admin-Passwort griffe dann, brächte aber nichts.
+    { name: 'SERVER_ROLE_0_CAN_KICK_BAN', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_0_CAN_ACCESS_INVENTORIES', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_0_CAN_EDIT_WORLD', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_0_CAN_EDIT_BASE', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_0_CAN_EXTEND_BASE', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_1_CAN_KICK_BAN', source: { kind: 'const', value: 'false' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_1_CAN_ACCESS_INVENTORIES', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_1_CAN_EDIT_WORLD', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_1_CAN_EDIT_BASE', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_1_CAN_EXTEND_BASE', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_2_CAN_KICK_BAN', source: { kind: 'const', value: 'false' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_2_CAN_ACCESS_INVENTORIES', source: { kind: 'const', value: 'false' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_2_CAN_EDIT_WORLD', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_2_CAN_EDIT_BASE', source: { kind: 'const', value: 'false' }, trim: false, omitWhenEmpty: false },
+    { name: 'SERVER_ROLE_2_CAN_EXTEND_BASE', source: { kind: 'const', value: 'false' }, trim: false, omitWhenEmpty: false },
     // Backups und Neustarts steuert das Panel, nicht das Image.
     { name: 'UPDATE_CRON', source: { kind: 'field', field: 'updateCron' }, fallback: '', trim: false, omitWhenEmpty: false },
     { name: 'TZ', source: { kind: 'timezone' }, trim: false, omitWhenEmpty: false },

@@ -167,6 +167,13 @@ describe('Umgebungsvariablen', () => {
     expect(env.SERVER_ROLE_0_NAME).toBe('Admin');
     expect(env.SERVER_ROLE_0_PASSWORD).toBe('admin1');
     expect(env.SERVER_ROLE_2_PASSWORD).toBeUndefined();
+    // Ohne explizite Rechte legt das Image die Gruppen rechtelos an.
+    expect(env.SERVER_ROLE_0_CAN_KICK_BAN).toBe('true');
+    expect(env.SERVER_ROLE_0_CAN_ACCESS_INVENTORIES).toBe('true');
+    expect(env.SERVER_ROLE_0_CAN_EDIT_BASE).toBe('true');
+    expect(env.SERVER_ROLE_0_CAN_EXTEND_BASE).toBe('true');
+    expect(env.SERVER_ROLE_1_CAN_KICK_BAN).toBe('false');
+    expect(env.SERVER_ROLE_2_CAN_ACCESS_INVENTORIES).toBe('false');
     // Enshrouded nutzt nur noch den Query-Port.
     expect(env.SERVER_QUERYPORT).toBe('2457');
   });
