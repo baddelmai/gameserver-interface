@@ -29,6 +29,7 @@ export const enshroudedDefinition: TemplateDefinition = {
     'Enshrouded läuft unter Wine — der erste Start dauert deutlich länger, weil SteamCMD lädt und das Wine-Präfix angelegt wird.',
     'Das Spiel bietet weder RCON noch Mod-Unterstützung: Die Konsole ist read-only, der Mod-Reiter entfällt.',
     'Der Zugang läuft über Rollenpasswörter (Admin, Freund, Gast) — ein einzelnes Serverpasswort kennt Enshrouded nicht mehr.',
+    'Jede Rolle braucht ein eigenes Passwort; nur der Gast darf offen bleiben. Sonst verweigert Enshrouded den Start.',
     'Spielernamen werden aus dem Log gelesen; einen Ping liefert der Server nicht.',
   ],
   capabilities: {
@@ -53,13 +54,13 @@ export const enshroudedDefinition: TemplateDefinition = {
     },
     {
       id: 'friendPassword', label: 'Freund-Passwort', type: 'password', default: '',
-      required: false, maxLength: 32, editable: true, restartRequired: true, secret: true,
-      help: 'Rolle „Friend“ — darf bauen und Inventare nutzen. Leer lassen, um die Rolle zu sperren.',
+      required: true, maxLength: 32, editable: true, restartRequired: true, secret: true,
+      help: 'Rolle „Friend“ — darf bauen und Inventare nutzen. Pflicht: Enshrouded erlaubt nur eine Rolle ohne Passwort, und das ist der Gast.',
     },
     {
       id: 'guestPassword', label: 'Gast-Passwort', type: 'password', default: '',
       required: false, maxLength: 32, editable: true, restartRequired: true, secret: true,
-      help: 'Rolle „Guest“ — eingeschränkte Rechte. Leer lassen, um die Rolle zu sperren.',
+      help: 'Rolle „Guest“ — eingeschränkte Rechte. Leer gelassen kann jeder ohne Passwort als Gast beitreten.',
     },
     {
       id: 'slotCount', label: 'Slots', type: 'number', default: 16,
@@ -133,23 +134,25 @@ export const enshroudedDefinition: TemplateDefinition = {
     // Backups und Neustarts steuert das Panel, nicht das Image.
     { name: 'UPDATE_CRON', source: { kind: 'field', field: 'updateCron' }, fallback: '', trim: false, omitWhenEmpty: false },
     { name: 'TZ', source: { kind: 'timezone' }, trim: false, omitWhenEmpty: false },
-    // Leeres Rollenpasswort sperrt die Rolle — die Variable bleibt dann weg.
+    // Leeres Rollenpasswort öffnet die Rolle für jeden — die Variable bleibt
+    // dann weg, und das Image legt die Gruppe ohne Passwort an.
     { name: 'SERVER_ROLE_0_PASSWORD', source: { kind: 'field', field: 'adminPassword' }, trim: false, omitWhenEmpty: true },
     { name: 'SERVER_ROLE_1_PASSWORD', source: { kind: 'field', field: 'friendPassword' }, trim: false, omitWhenEmpty: true },
     { name: 'SERVER_ROLE_2_PASSWORD', source: { kind: 'field', field: 'guestPassword' }, trim: false, omitWhenEmpty: true },
   ],
 
   logPatterns: {
-    // Abgelesen am Log eines laufenden `mornedhels/enshrouded-server`:
+    // Abgelesen am Log eines laufenden `mornedhels/enshrouded-server`, zuletzt
+    // am 21.10.2026 unter Enshrouded 1.0 mit echtem Beitritt bestätigt:
     //   [server] Player 'Henner' logged in with Permissions:
     //   [server] Remove Player 'Henner'
-    //   [game_server] Switching state from LoadEcsScene to Run after 169.01 ms
+    //   [game_server] Switching state from LoadEcsScene to Run after 500.23 ms
     // Das Präfix `[server]` gehört zum Muster: ohne es fängt das
     // Beitrittsmuster auch „[server] Machine '1': Player '0(0)' logged in“ —
     // dieselbe Anmeldung, aber mit der internen Nummer statt des Namens.
     join: { source: '\\[server\\] Player \'([^\']+)\' logged in', flags: '' },
     leave: { source: '\\[server\\] Remove Player \'([^\']+)\'', flags: '' },
-    // Erst der Zustand `Run` heißt spielbar. `Host_Online` meldet sich früher,
+    // Erst der Zustand `Run` heißt spielbar. `HostOnline` meldet sich früher,
     // da lädt der Server die Welt noch — bei großen Welten Minuten davor.
     ready: { source: '\\[game_server\\] Switching state from \\S+ to Run\\b', flags: '' },
     clean: {
@@ -163,6 +166,29 @@ export const enshroudedDefinition: TemplateDefinition = {
       rule: 'required',
       field: 'adminPassword',
       message: 'Ohne Admin-Passwort ist der Server nicht administrierbar',
+    },
+    // Enshrouded 1.0 verweigert sonst den Start („Only one user group can be
+    // without password“, „user groups passwords must be unique“) und das Image
+    // startet ihn endlos neu — die Instanz stünde für immer auf „Startet“.
+    // Offen bleiben darf nur der Gast.
+    {
+      rule: 'required',
+      field: 'friendPassword',
+      message: 'Nur der Gast darf ohne Passwort bleiben — Enshrouded startet sonst nicht',
+    },
+    {
+      rule: 'notEqualTo',
+      field: 'friendPassword',
+      fields: ['adminPassword'],
+      message: 'Jede Rolle braucht ein eigenes Passwort',
+      onlyWhenSet: true,
+    },
+    {
+      rule: 'notEqualTo',
+      field: 'guestPassword',
+      fields: ['adminPassword', 'friendPassword'],
+      message: 'Jede Rolle braucht ein eigenes Passwort',
+      onlyWhenSet: true,
     },
   ],
 

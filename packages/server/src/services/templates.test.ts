@@ -6,9 +6,12 @@ import {
   BUILTIN_DEFINITIONS,
   enshroudedDefinition,
   findTemplate,
+  defaultValues,
+  getTemplate,
   listTemplates,
   minecraftDefinition,
   valheimDefinition,
+  validateSettings,
   type TemplateDefinition,
 } from '@gsp/shared';
 import { openDb, type Db } from '../db/index.js';
@@ -215,6 +218,51 @@ describe('Vorlagendienst', () => {
     expect(migrated).not.toContain('enshrouded');
     const names = findTemplate('enshrouded')?.definition.env.map((e) => e.name) ?? [];
     expect(names.filter((n) => n.includes('_CAN_'))).toEqual(['SERVER_ROLE_0_CAN_KICK_BAN']);
+  });
+
+  /**
+   * Enshrouded 1.0 startet nicht, wenn Freund und Gast beide ohne Passwort
+   * sind — die alte Vorlage ließ genau das zu, und die Instanz hing auf
+   * „Startet“.
+   */
+  it('ergänzt einer alten Enshrouded-Zeile die Rollenregeln von 1.0', () => {
+    const oldHelp = {
+      friendPassword: 'Rolle „Friend“ — darf bauen und Inventare nutzen. Leer lassen, um die Rolle zu sperren.',
+      guestPassword: 'Rolle „Guest“ — eingeschränkte Rechte. Leer lassen, um die Rolle zu sperren.',
+    } as Record<string, string>;
+    const old = {
+      ...enshroudedDefinition,
+      fields: enshroudedDefinition.fields.map((f) =>
+        oldHelp[f.id] ? { ...f, help: oldHelp[f.id], required: false } : f,
+      ),
+      validations: enshroudedDefinition.validations.filter((r) => r.field === 'adminPassword'),
+    };
+    const stamp = '2026-01-01T00:00:00.000Z';
+    store.upsertTemplate('enshrouded', JSON.stringify(old), true, stamp);
+
+    const { migrated } = service.seedAndLoad();
+
+    expect(migrated).toContain('enshrouded');
+    const template = getTemplate('enshrouded');
+    const errors = validateSettings(template, { ...defaultValues(template), adminPassword: 'geheim', friendPassword: '', guestPassword: '' });
+    expect(errors.map((e) => e.field)).toContain('friendPassword');
+    const guest = findTemplate('enshrouded')?.definition.fields.find((f) => f.id === 'guestPassword');
+    expect(guest?.help).not.toContain('sperren');
+    expect(store.getTemplateRow('enshrouded')?.updated_at).toBe(stamp);
+  });
+
+  it('lässt eigene Enshrouded-Regeln in Ruhe', () => {
+    service.seedAndLoad();
+    const own: TemplateDefinition = {
+      ...enshroudedDefinition,
+      validations: [{ rule: 'minLength', field: 'friendPassword', value: 8, message: 'Mindestens acht Zeichen', onlyWhenSet: true }],
+    };
+    service.update('enshrouded', own);
+
+    service.seedAndLoad();
+
+    const rules = findTemplate('enshrouded')?.definition.validations ?? [];
+    expect(rules.find((r) => r.rule === 'minLength')?.message).toBe('Mindestens acht Zeichen');
   });
 
   it('verweigert das Löschen, solange Instanzen darauf beruhen', () => {

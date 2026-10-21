@@ -215,6 +215,13 @@ export function applyValidations(
         if (hit) errors.push({ field: rule.field, message: rule.message });
         break;
       }
+
+      case 'notEqualTo': {
+        if (rule.onlyWhenSet && value === '') break;
+        const hit = rule.fields.some((field) => String(values[field] ?? '') === value);
+        if (hit) errors.push({ field: rule.field, message: rule.message });
+        break;
+      }
     }
   }
 

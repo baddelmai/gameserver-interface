@@ -132,6 +132,14 @@ export const validationRuleSchema = z.discriminatedUnion('rule', [
     message: z.string(),
     onlyWhenSet: z.boolean().default(true),
   }),
+  /** Der Wert darf keinem der genannten Felder gleichen — etwa zwei Rollenpasswörter. */
+  z.object({
+    rule: z.literal('notEqualTo'),
+    field: z.string(),
+    fields: z.array(z.string()).min(1),
+    message: z.string(),
+    onlyWhenSet: z.boolean().default(true),
+  }),
 ]);
 export type ValidationRule = z.infer<typeof validationRuleSchema>;
 

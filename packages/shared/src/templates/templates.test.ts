@@ -217,11 +217,29 @@ describe('Validierung', () => {
     expect(errors.some((f) => f.field === 'levelName')).toBe(true);
   });
 
+  /**
+   * Enshrouded 1.0 verweigert den Start bei zwei Rollen ohne Passwort oder
+   * doppelten Passwörtern — das Panel muss das vorher abfangen.
+   */
+  it('verlangt bei Enshrouded eigene Passwörter und lässt nur den Gast offen', () => {
+    const template = getTemplate('enshrouded');
+    const base = { ...defaultValues(template), adminPassword: 'admin123' };
+    const fields = (values: Record<string, string>) =>
+      validateSettings(template, { ...base, ...values }).map((e) => e.field);
+
+    expect(fields({ friendPassword: '', guestPassword: '' })).toContain('friendPassword');
+    expect(fields({ friendPassword: 'admin123' })).toContain('friendPassword');
+    expect(fields({ friendPassword: 'freund123', guestPassword: 'freund123' })).toContain('guestPassword');
+    expect(fields({ friendPassword: 'freund123', guestPassword: '' })).toEqual([]);
+    // Gleicher Anfang ist kein gleiches Passwort.
+    expect(fields({ friendPassword: 'admin1234' })).toEqual([]);
+  });
+
   it('akzeptiert gültige Standardwerte für alle Vorlagen', () => {
     const gueltig: Record<string, Record<string, string>> = {
       minecraft: {},
       valheim: { password: 'sicher123' },
-      enshrouded: { adminPassword: 'admin123' },
+      enshrouded: { adminPassword: 'admin123', friendPassword: 'freund123' },
       // Rust hat kein erzeugtes Geheimnis: sein Web-RCON braucht ein Passwort,
       // das der Betreiber selbst kennt.
       rust: { rconPassword: 'sicher123' },

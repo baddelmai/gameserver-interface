@@ -762,6 +762,7 @@ function ValidationSection({
               { value: 'minLength', label: 'Mindestlänge' },
               { value: 'pattern', label: 'muss Muster entsprechen' },
               { value: 'notContainedIn', label: 'darf nicht in anderen Feldern vorkommen' },
+              { value: 'notEqualTo', label: 'darf anderen Feldern nicht gleichen' },
             ]}
             onChange={(v) => {
               const basis = { field: regel.field, message: regel.message };
@@ -772,7 +773,9 @@ function ValidationSection({
                     ? { rule: 'minLength', ...basis, value: 5, onlyWhenSet: true }
                     : v === 'pattern'
                       ? { rule: 'pattern', ...basis, pattern: { source: '^.+$', flags: '' }, onlyWhenSet: true }
-                      : { rule: 'notContainedIn', ...basis, fields: [], onlyWhenSet: true },
+                      : v === 'notContainedIn'
+                        ? { rule: 'notContainedIn', ...basis, fields: [], onlyWhenSet: true }
+                        : { rule: 'notEqualTo', ...basis, fields: [], onlyWhenSet: true },
               );
             }}
           />
@@ -792,7 +795,7 @@ function ValidationSection({
               onChange={(v) => change({ ...regel, pattern: { ...regel.pattern, source: v } })}
             />
           )}
-          {regel.rule === 'notContainedIn' && (
+          {(regel.rule === 'notContainedIn' || regel.rule === 'notEqualTo') && (
             <TextField
               label="Andere Felder"
               value={regel.fields.join(', ')}

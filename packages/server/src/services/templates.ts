@@ -53,6 +53,7 @@ export class TemplateService {
     const migrated = [
       ...this.migrateValheimWorldFormat(),
       ...this.migrateEnshroudedRolePermissions(now),
+      ...this.migrateEnshroudedRoleRules(),
     ];
     this.reload();
     return { seeded, backfilled, migrated };
@@ -181,6 +182,86 @@ export class TemplateService {
     const permissions = definition.env.filter((entry) => isPermission(entry.name));
     stored.env = [...storedEnv, ...permissions];
     this.store.upsertTemplate('enshrouded', JSON.stringify(stored), true, now);
+    return ['enshrouded'];
+  }
+
+  /**
+   * Hebt eine bestehende Enshrouded-Zeile auf den Stand von Enshrouded 1.0.
+   *
+   * Seit 1.0 prüft der Server die Rollen: höchstens eine ohne Passwort, alle
+   * Passwörter verschieden. Die frühere Vorlage ließ Freund und Gast leer zu —
+   * der Server startete dann endlos neu, die Instanz stand auf „Startet“ und
+   * sah keine Spieler. Ergänzt werden deshalb das Pflichtfeld Freund-Passwort
+   * und die Prüfregeln; dazu die geratenen Log-Muster aus der Zeit vor dem
+   * ersten echten Log, falls eine so alte Zeile noch besteht.
+   *
+   * Ersetzt wird nur, was eine frühere mitgelieferte Vorlage genau so
+   * enthielt; eine fehlende Regel wird ergänzt, eine vorhandene nie verändert.
+   * Mit einem Muster wandert die zugehörige `fakeLog`-Zeile mit, sonst lehnte
+   * die Prüfung die Vorlage ab.
+   *
+   * `updated_at` bleibt stehen: Nichts davon ändert den Container, „Neu
+   * aufbauen“ wäre grundlos. Wer ein leeres Freund-Passwort hat, wird beim
+   * nächsten Speichern der Einstellungen zum Eintragen aufgefordert.
+   */
+  private migrateEnshroudedRoleRules(): string[] {
+    const definition = BUILTIN_DEFINITIONS.find((d) => d.id === 'enshrouded');
+    if (!definition) return [];
+
+    const row = this.store.getTemplateRow('enshrouded');
+    if (!row || row.builtin !== 1) return [];
+
+    let stored: Record<string, unknown>;
+    try {
+      stored = JSON.parse(row.definition) as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+
+    // Geraten, vor dem ersten Blick in ein echtes Log.
+    const outdatedPatterns: Record<'join' | 'leave' | 'ready', string> = {
+      join: '(?:Player|Character)\s+[\'"]?([^\'"]+?)[\'"]?\s+(?:connected|joined)',
+      leave: '(?:Player|Character)\s+[\'"]?([^\'"]+?)[\'"]?\s+(?:disconnected|left)',
+      ready: '(Server is now (?:online|listening)|HandleAssignmentReq|Session .* created)',
+    };
+    const outdatedHelp: Record<string, string> = {
+      friendPassword: 'Rolle „Friend“ — darf bauen und Inventare nutzen. Leer lassen, um die Rolle zu sperren.',
+      guestPassword: 'Rolle „Guest“ — eingeschränkte Rechte. Leer lassen, um die Rolle zu sperren.',
+    };
+
+    let changed = false;
+
+    const patterns = stored.logPatterns as Record<string, { source?: unknown } | undefined> | undefined;
+    const fakeLog = stored.fakeLog as Record<string, unknown> | undefined;
+    for (const key of ['join', 'leave', 'ready'] as const) {
+      if (patterns?.[key]?.source !== outdatedPatterns[key]) continue;
+      patterns[key] = definition.logPatterns[key];
+      if (fakeLog && definition.fakeLog) fakeLog[key] = definition.fakeLog[key];
+      changed = true;
+    }
+
+    if (Array.isArray(stored.fields)) {
+      for (const field of stored.fields as { id?: unknown; help?: unknown; required?: unknown }[]) {
+        const id = typeof field?.id === 'string' ? field.id : '';
+        const current = definition.fields.find((f) => f.id === id);
+        if (!current || outdatedHelp[id] === undefined || field.help !== outdatedHelp[id]) continue;
+        field.help = current.help;
+        field.required = current.required;
+        changed = true;
+      }
+    }
+
+    if (Array.isArray(stored.validations)) {
+      const existing = stored.validations as { rule?: unknown; field?: unknown }[];
+      for (const rule of definition.validations) {
+        if (existing.some((e) => e?.rule === rule.rule && e?.field === rule.field)) continue;
+        existing.push(rule);
+        changed = true;
+      }
+    }
+
+    if (!changed) return [];
+    this.store.upsertTemplate('enshrouded', JSON.stringify(stored), true, row.updated_at);
     return ['enshrouded'];
   }
 
