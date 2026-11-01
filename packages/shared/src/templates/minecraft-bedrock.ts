@@ -11,6 +11,22 @@ import type { TemplateDefinition } from '../schema/template-definition.js';
  * Anders als die Java-Ausgabe kennt Bedrock **kein RCON**. Die Konsole ist
  * deshalb nur lesend, und Spielernamen kommen aus dem Log.
  *
+ * **NetherNet statt RakNet.** Seit BDS 26.50 ist NetherNet die Vorgabe, seit
+ * Client 26.60 verbinden sich Spieler nicht mehr über RakNet. Damit sieht das
+ * Netz anders aus als früher:
+ * - Der Verbindungsaufbau läuft über **TCP** 19132. Auf UDP 19132 lauscht der
+ *   Server gar nicht mehr.
+ * - Die Spieldaten laufen über **einen UDP-Port je Spieler** aus einem Bereich.
+ *   Ohne festen Bereich nähme der Server zufällige Ports, die Docker nicht
+ *   veröffentlicht — die Verbindung bliebe beim Laden hängen.
+ * - Beim Verbindungsaufbau nennt der Server dem Client Adresse und Ports der
+ *   Spieldaten. Im Bridge-Netz von Docker kennt er beides nicht selbst, deshalb
+ *   steht es in `SERVER_UDP_PORTS`, gebaut aus Feld und Portbereich.
+ *
+ * Belegt an der README von `itzg/docker-minecraft-bedrock-server` (Abschnitt
+ * „NetherNet") und an Hoster-Anleitungen, Stand 01.11.2026. Gegen einen echten
+ * Client noch ungeprüft.
+ *
  * Die Variablen setzen die gleichnamigen Einträge der `server.properties`; sie
  * sind in der Docker-Hub-Beschreibung aufgeführt.
  */
@@ -26,6 +42,7 @@ export const minecraftBedrockDefinition: TemplateDefinition = {
     'Mit dem Anlegen wird die Minecraft-EULA akzeptiert (EULA=TRUE).',
     'Bedrock kennt kein RCON — die Konsole zeigt nur den Log-Stream.',
     'Spieler der Java-Ausgabe können sich hier nicht verbinden; dafür gibt es die Vorlage „Minecraft“.',
+    'Seit Bedrock 26.50 läuft die Verbindung über NetherNet: Router und Firewall müssen den TCP-Verbindungsport und den ganzen UDP-Bereich durchlassen — UDP 19132 allein genügt nicht mehr.',
   ],
   capabilities: {
     console: 'readonly',
@@ -34,7 +51,11 @@ export const minecraftBedrockDefinition: TemplateDefinition = {
     moderation: false,
   },
   ports: [
-    { name: 'game', label: 'Spielport', container: 19132, protocol: 'udp', defaultHost: 19132, internalOnly: false },
+    // Der Name `game` bleibt, obwohl es jetzt der TCP-Verbindungsport ist:
+    // bestehende Instanzen haben ihren Host-Port unter diesem Namen gespeichert,
+    // und die Adresse im Detailkopf richtet sich nach ihm.
+    { name: 'game', label: 'Verbindungsport', container: 19132, protocol: 'tcp', defaultHost: 19132, internalOnly: false },
+    { name: 'udp', label: 'Spieldaten', container: 19140, protocol: 'udp', defaultHost: 19140, internalOnly: false, count: 20 },
   ],
   volumes: [{ name: 'data', containerPath: '/data', role: 'data' }],
   fields: [
@@ -73,7 +94,13 @@ export const minecraftBedrockDefinition: TemplateDefinition = {
     },
     {
       id: 'maxPlayers', label: 'Slots', type: 'number', default: 10,
-      min: 1, max: 100, required: true, editable: true, restartRequired: true, secret: false,
+      min: 1, max: 20, required: true, editable: true, restartRequired: true, secret: false,
+      help: 'Höchstens 20 — jeder Spieler braucht einen eigenen UDP-Port, und die Vorlage veröffentlicht 20.',
+    },
+    {
+      id: 'publicAddress', label: 'Erreichbar unter', type: 'text', default: '<public_ip>',
+      required: true, maxLength: 64, editable: true, restartRequired: true, secret: false,
+      help: 'IP-Adresse, die der Server den Spielern für die Spieldaten nennt. „<public_ip>“ ermittelt beim Start die öffentliche IP (Portweiterleitung im Router nötig). Nur im Heimnetz: die LAN-IP des Hosts, etwa 192.168.1.10. Kein Hostname.',
     },
     {
       id: 'allowCheats', label: 'Cheats erlauben', type: 'boolean', default: false,
@@ -116,7 +143,15 @@ export const minecraftBedrockDefinition: TemplateDefinition = {
       boolean: { whenTrue: 'true', whenFalse: 'false' }, fallback: 'false', trim: false, omitWhenEmpty: false,
     },
     { name: 'VIEW_DISTANCE', source: { kind: 'field', field: 'viewDistance' }, fallback: '10', trim: false, omitWhenEmpty: false },
-    { name: 'SERVER_PORT', source: { kind: 'port', port: 'game' }, fallback: '19132', trim: false, omitWhenEmpty: false },
+    // Der Container-Port, nicht der Host-Port: Docker leitet den Host-Port auf
+    // 19132 im Container weiter. Früher stand hier der Host-Port, und jede
+    // Instanz mit einem anderen Port als 19132 lauschte ins Leere.
+    { name: 'SERVER_PORT', source: { kind: 'const', value: '19132' }, trim: false, omitWhenEmpty: false },
+    { name: 'TRANSPORT', source: { kind: 'const', value: 'nethernet' }, trim: false, omitWhenEmpty: false },
+    {
+      name: 'SERVER_UDP_PORTS', source: { kind: 'portMapping', port: 'udp', addressField: 'publicAddress' },
+      trim: false, omitWhenEmpty: false,
+    },
     { name: 'TZ', source: { kind: 'timezone' }, trim: false, omitWhenEmpty: false },
     // Leerer Seed bedeutet Zufallswelt.
     { name: 'LEVEL_SEED', source: { kind: 'field', field: 'levelSeed' }, trim: true, omitWhenEmpty: true },
@@ -134,6 +169,15 @@ export const minecraftBedrockDefinition: TemplateDefinition = {
   },
 
   validations: [
+    {
+      rule: 'pattern',
+      field: 'publicAddress',
+      // `<public_ip>`, IPv4 oder IPv6 in eckigen Klammern — das Image verlangt
+      // ein Adressliteral, keinen Hostnamen.
+      pattern: { source: '^(<public_ip>|\\d{1,3}(\\.\\d{1,3}){3}|\\[[0-9A-Fa-f:]+\\])$', flags: '' },
+      message: 'Eine IP-Adresse (IPv6 in eckigen Klammern) oder <public_ip> — kein Hostname',
+      onlyWhenSet: true,
+    },
     {
       rule: 'pattern',
       field: 'levelName',

@@ -447,6 +447,8 @@ function Panel({ session, onLogout }: { session: SessionInfo; onLogout: () => vo
                   template={template}
                   note={note}
                   busy={busy}
+                  ask={ask}
+                  onRestarted={() => void loadInstances()}
                   onSave={(values, restart) =>
                     void run(async () => {
                       await api.saveSettings(instance.id, values, restart);

@@ -1,9 +1,68 @@
 import { useEffect, useState } from 'react';
 import type { Instance, TemplateDescriptor } from '@gsp/shared';
 import { Field, type Wert } from '../components/Field.js';
+import type { Question } from '../components/Confirm.js';
 import { SectionLabel } from '../components/basics.js';
+import { ConfigFiles } from './ConfigFiles.js';
 
+type Mode = 'form' | 'files';
+
+/**
+ * Zwei Wege zur selben Konfiguration: das Formular aus der Vorlage und die
+ * Dateien selbst. Beide bleiben eingehängt, damit ein Wechsel ungespeicherte
+ * Änderungen im Editor nicht verwirft.
+ */
 export function Config({
+  instance,
+  template,
+  note,
+  busy,
+  ask,
+  onSave,
+  onRestarted,
+}: {
+  instance: Instance;
+  template: TemplateDescriptor;
+  note: string;
+  busy: boolean;
+  ask: (f: Question) => void;
+  onSave: (values: Record<string, Wert>, restart: boolean) => void;
+  onRestarted: () => void;
+}) {
+  const [mode, setMode] = useState<Mode>('form');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-5)' }}>
+      <div className="chips" role="group" aria-label="Darstellung">
+        {(
+          [
+            ['form', 'Formular'],
+            ['files', 'Dateien'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`chip${mode === id ? ' chip--active' : ''}`}
+            aria-pressed={mode === id}
+            onClick={() => setMode(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div hidden={mode !== 'form'}>
+        <ConfigForm instance={instance} template={template} note={note} busy={busy} onSave={onSave} />
+      </div>
+      <div hidden={mode !== 'files'}>
+        <ConfigFiles instance={instance} template={template} ask={ask} onRestarted={onRestarted} />
+      </div>
+    </div>
+  );
+}
+
+function ConfigForm({
   instance,
   template,
   note,

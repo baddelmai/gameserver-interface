@@ -28,6 +28,8 @@ export interface PortBinding {
   container: number;
   protocol: 'tcp' | 'udp';
   host: number;
+  /** Anzahl aufeinanderfolgender Ports ab `container` und `host`; ohne Angabe einer. */
+  count?: number;
 }
 
 export interface BindMount {

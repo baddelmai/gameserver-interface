@@ -54,6 +54,7 @@ export class TemplateService {
       ...this.migrateValheimWorldFormat(),
       ...this.migrateEnshroudedRolePermissions(now),
       ...this.migrateEnshroudedRoleRules(),
+      ...this.migrateBedrockNetherNet(now),
     ];
     this.reload();
     return { seeded, backfilled, migrated };
@@ -183,6 +184,73 @@ export class TemplateService {
     stored.env = [...storedEnv, ...permissions];
     this.store.upsertTemplate('enshrouded', JSON.stringify(stored), true, now);
     return ['enshrouded'];
+  }
+
+  /**
+   * Stellt eine bestehende Bedrock-Zeile von RakNet auf NetherNet um.
+   *
+   * Seit BDS 26.50 läuft der Verbindungsaufbau über TCP und die Spieldaten
+   * über einen UDP-Bereich; seit Client 26.60 kommt über die alte Vorlage —
+   * nur UDP 19132 — niemand mehr auf den Server. Übernommen werden die Ports,
+   * die Netzvariablen, das Adressfeld samt Prüfregel und die neue
+   * Slot-Obergrenze; alles andere bleibt, wie der Betreiber es eingestellt hat.
+   *
+   * Erkannt wird die alte Form am fehlenden `TRANSPORT`. Angefasst werden nur
+   * mitgelieferte Zeilen. `updated_at` wird neu gesetzt, weil sich der
+   * Container ändert: bestehende Instanzen melden „Vorlage geändert“ und
+   * bekommen NetherNet mit „Neu aufbauen“. Den UDP-Bereich trägt
+   * `InstanceService.completePorts()` dabei je Instanz nach.
+   */
+  private migrateBedrockNetherNet(now: string): string[] {
+    const definition = BUILTIN_DEFINITIONS.find((d) => d.id === 'minecraft-bedrock');
+    if (!definition) return [];
+
+    const row = this.store.getTemplateRow('minecraft-bedrock');
+    if (!row || row.builtin !== 1) return [];
+
+    let stored: Record<string, unknown>;
+    try {
+      stored = JSON.parse(row.definition) as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(stored.env) || !Array.isArray(stored.fields)) return [];
+    const storedEnv = stored.env as { name?: unknown }[];
+    if (storedEnv.some((entry) => entry?.name === 'TRANSPORT')) return [];
+
+    stored.ports = definition.ports;
+
+    // Netzvariablen ersetzen bzw. ergänzen — der Rest der Umgebung bleibt.
+    const network = new Set(['SERVER_PORT', 'TRANSPORT', 'SERVER_UDP_PORTS']);
+    stored.env = [
+      ...storedEnv.filter((entry) => typeof entry?.name !== 'string' || !network.has(entry.name)),
+      ...definition.env.filter((entry) => network.has(entry.name)),
+    ];
+
+    const fields = stored.fields as { id?: unknown; max?: unknown; help?: unknown }[];
+    const maxPlayers = definition.fields.find((f) => f.id === 'maxPlayers');
+    for (const field of fields) {
+      if (field?.id !== 'maxPlayers' || !maxPlayers) continue;
+      field.max = maxPlayers.max;
+      field.help = maxPlayers.help;
+    }
+    const address = definition.fields.find((f) => f.id === 'publicAddress');
+    if (address && !fields.some((f) => f?.id === 'publicAddress')) fields.push(address);
+
+    const rules = Array.isArray(stored.validations) ? (stored.validations as { field?: unknown }[]) : [];
+    for (const rule of definition.validations.filter((r) => r.field === 'publicAddress')) {
+      if (!rules.some((r) => r?.field === rule.field)) rules.push(rule);
+    }
+    stored.validations = rules;
+
+    if (Array.isArray(stored.notes)) {
+      const notes = stored.notes as unknown[];
+      const hint = definition.notes.find((n) => n.includes('NetherNet'));
+      if (hint && !notes.includes(hint)) notes.push(hint);
+    }
+
+    this.store.upsertTemplate('minecraft-bedrock', JSON.stringify(stored), true, now);
+    return ['minecraft-bedrock'];
   }
 
   /**
@@ -382,6 +450,12 @@ export class TemplateService {
     if (portNames.size !== definition.ports.length) {
       errors.push({ field: 'ports', message: 'Portnamen müssen eindeutig sein' });
     }
+    for (const [index, port] of definition.ports.entries()) {
+      const last = Math.max(port.container, port.defaultHost) + (port.count ?? 1) - 1;
+      if (last > 65_535) {
+        errors.push({ field: `ports.${index}`, message: 'Der Portbereich reicht über 65535 hinaus' });
+      }
+    }
 
     // Verweise der Env-Abbildung müssen ins Leere zeigen können, sonst stünde
     // die Variable später einfach leer im Container.
@@ -391,6 +465,14 @@ export class TemplateService {
       }
       if (mapping.source.kind === 'port' && !portNames.has(mapping.source.port)) {
         errors.push({ field: `env.${index}`, message: `Unbekannter Port „${mapping.source.port}“` });
+      }
+      if (mapping.source.kind === 'portMapping') {
+        if (!portNames.has(mapping.source.port)) {
+          errors.push({ field: `env.${index}`, message: `Unbekannter Port „${mapping.source.port}“` });
+        }
+        if (mapping.source.addressField && !fieldIds.has(mapping.source.addressField)) {
+          errors.push({ field: `env.${index}`, message: `Unbekanntes Feld „${mapping.source.addressField}“` });
+        }
       }
       if (mapping.source.kind === 'rconPassword' && definition.capabilities.console !== 'rcon') {
         errors.push({

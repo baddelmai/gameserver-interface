@@ -29,6 +29,16 @@ export const envSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('rconPassword') }),
   /** Zeitzone des Hosts. */
   z.object({ kind: z.literal('timezone') }),
+  /**
+   * Zuordnung eines Ports in der Form `[Adresse:]Host:Container`, bei einem
+   * Bereich `[Adresse:]19140-19159:19140-19159`. Für Images, die ihren Clients
+   * mitteilen müssen, unter welcher Adresse und welchen Ports sie von außen
+   * erreichbar sind — Bedrocks `SERVER_UDP_PORTS` seit NetherNet.
+   *
+   * Die Adresse kommt aus einem Formularfeld und entfällt samt Doppelpunkt,
+   * wenn es leer ist.
+   */
+  z.object({ kind: z.literal('portMapping'), port: z.string(), addressField: z.string().optional() }),
 ]);
 export type EnvSource = z.infer<typeof envSourceSchema>;
 

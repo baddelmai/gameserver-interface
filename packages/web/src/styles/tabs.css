@@ -380,6 +380,128 @@
   font-size: 12px;
 }
 
+/* --- Konfigurationsdateien ------------------------------------------------ */
+
+.files {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: var(--s-8);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .files {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.files__browser,
+.files__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+.files__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--text-leise);
+}
+.files__crumb {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-sekundaer);
+  cursor: pointer;
+}
+.files__crumb:hover {
+  color: var(--akzent);
+}
+.files__sep {
+  padding: 0 var(--s-1);
+}
+/* Die Zeile ist ein Knopf, soll aber wie die übrigen Listenzeilen aussehen. */
+.files__entry {
+  width: 100%;
+  font-family: var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.files__entry:hover {
+  border-color: var(--rahmen-kraeftig);
+}
+.files__entry[aria-current='true'] {
+  border-color: var(--akzent);
+  background: var(--akzent-selektion);
+}
+.files__error {
+  border: 1px solid var(--warnung);
+}
+.files__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-4);
+  font-size: 12px;
+}
+.files__path {
+  color: var(--text-primaer);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.files__state {
+  color: var(--text-leise);
+}
+.files__state--dirty {
+  color: var(--warnung);
+}
+
+.editor {
+  display: flex;
+  border: 1px solid var(--rahmen);
+  background: var(--flaeche-tief);
+  height: 520px;
+}
+.editor:focus-within {
+  outline: 2px solid var(--akzent);
+  outline-offset: 2px;
+}
+.editor__gutter,
+.editor__text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: var(--s-4) var(--s-3);
+  margin: 0;
+}
+.editor__gutter {
+  flex: none;
+  min-width: 44px;
+  text-align: right;
+  color: var(--text-leise);
+  border-right: 1px solid var(--rahmen-leise);
+  overflow: hidden;
+  user-select: none;
+}
+.editor__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  resize: none;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+/* Der Rahmen um beide Spalten trägt den Fokus; ein zweiter Ring nur um die
+   Textspalte sähe aus wie ein Fehler in der Ausrichtung. */
+.editor__text:focus-visible {
+  outline: none;
+}
+
 /* --- Aufbau einer Instanz -------------------------------------------------- */
 
 .progress {

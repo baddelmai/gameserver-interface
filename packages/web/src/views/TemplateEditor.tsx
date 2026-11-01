@@ -201,6 +201,15 @@ export function TemplateEditor({
             <TextField label="Beschriftung" value={port.label} onChange={(v) => change({ ...port, label: v })} />
             <NumberField label="Port im Container" value={port.container} onChange={(v) => change({ ...port, container: v })} />
             <NumberField label="Vorschlag Host" value={port.defaultHost} onChange={(v) => change({ ...port, defaultHost: v })} />
+            <NumberField
+              label="Anzahl"
+              value={port.count ?? 1}
+              help="Aufeinanderfolgende Ports ab diesem — etwa ein UDP-Port je Spieler bei Bedrock. 1 ist der Normalfall."
+              onChange={(v) => {
+                const { count: _count, ...single } = port;
+                change(v > 1 ? { ...port, count: v } : single);
+              }}
+            />
             <SelectField
               label="Protokoll"
               value={port.protocol}
@@ -487,6 +496,7 @@ function EnvSection({
                 { value: 'port', label: 'Port' },
                 { value: 'rconPassword', label: 'RCON-Passwort' },
                 { value: 'timezone', label: 'Zeitzone' },
+                { value: 'portMapping', label: 'Portzuordnung (Adresse:Host:Container)' },
               ]}
               onChange={(v) =>
                 change({
@@ -500,7 +510,9 @@ function EnvSection({
                           ? { kind: 'port', port: definition.ports[0]?.name ?? '' }
                           : v === 'rconPassword'
                             ? { kind: 'rconPassword' }
-                            : { kind: 'timezone' },
+                            : v === 'portMapping'
+                              ? { kind: 'portMapping', port: definition.ports[0]?.name ?? '' }
+                              : { kind: 'timezone' },
                 })
               }
             />
@@ -526,6 +538,31 @@ function EnvSection({
                 options={definition.ports.map((p) => ({ value: p.name, label: `${p.label} (${p.name})` }))}
                 onChange={(v) => change({ ...mapping, source: { kind: 'port', port: v } })}
               />
+            )}
+            {mapping.source.kind === 'portMapping' && (
+              <>
+                <SelectField
+                  label="Port"
+                  value={mapping.source.port}
+                  options={definition.ports.map((p) => ({ value: p.name, label: `${p.label} (${p.name})` }))}
+                  onChange={(v) => change({ ...mapping, source: { ...mapping.source, kind: 'portMapping', port: v } })}
+                />
+                <SelectField
+                  label="Adresse aus Feld"
+                  value={mapping.source.addressField ?? ''}
+                  options={[
+                    { value: '', label: 'keine Adresse' },
+                    ...definition.fields.map((f) => ({ value: f.id, label: `${f.label} (${f.id})` })),
+                  ]}
+                  onChange={(v) => {
+                    const source = mapping.source as { kind: 'portMapping'; port: string };
+                    change({
+                      ...mapping,
+                      source: v ? { kind: 'portMapping', port: source.port, addressField: v } : { kind: 'portMapping', port: source.port },
+                    });
+                  }}
+                />
+              </>
             )}
             <TextField
               label="Ersatzwert"

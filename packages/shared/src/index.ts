@@ -4,5 +4,6 @@ export * from './schema/template-definition.js';
 export * from './schema/instance.js';
 export * from './schema/api.js';
 export * from './schema/ws.js';
+export * from './schema/files.js';
 export * from './templates/index.js';
 export * from './format.js';

@@ -10,6 +10,7 @@ import type {
   FieldValues,
   GameTemplate,
   LogPatterns,
+  PortSpec,
   TemplateContext,
 } from '../schema/template.js';
 import { levelFromKeywords } from './util.js';
@@ -34,8 +35,8 @@ export function compileTemplate(def: TemplateDefinition): GameTemplate {
     volumes: def.volumes,
     fields: def.fields,
 
-    env: (values, ctx) => buildEnv(def.env, values, ctx),
-    args: (values, ctx) => buildArgs(def.args ?? [], values, ctx),
+    env: (values, ctx) => buildEnv(def.env, values, ctx, def.ports),
+    args: (values, ctx) => buildArgs(def.args ?? [], values, ctx, def.ports),
     logPatterns: buildLogPatterns(def),
     backup: {
       paths: def.backup.paths,
@@ -56,10 +57,11 @@ function buildEnv(
   mappings: EnvMapping[],
   values: FieldValues,
   ctx: TemplateContext,
+  ports: PortSpec[],
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const mapping of mappings) {
-    const value = resolveEnv(mapping, values, ctx);
+    const value = resolveEnv(mapping, values, ctx, ports);
     if (value === null) continue;
     env[mapping.name] = value;
   }
@@ -71,6 +73,7 @@ function resolveEnv(
   mapping: EnvMapping,
   values: FieldValues,
   ctx: TemplateContext,
+  ports: PortSpec[],
 ): string | null {
   let raw: string | number | boolean | undefined;
 
@@ -90,6 +93,19 @@ function resolveEnv(
     case 'timezone':
       raw = ctx.timezone;
       break;
+    case 'portMapping': {
+      const source = mapping.source;
+      const spec = ports.find((p) => p.name === source.port);
+      const host = ctx.hostPorts[source.port];
+      if (spec && host !== undefined) {
+        const address = source.addressField
+          ? String(values[source.addressField] ?? '').trim()
+          : '';
+        const mapped = `${portRange(host, spec.count)}:${portRange(spec.container, spec.count)}`;
+        raw = address ? `${address}:${mapped}` : mapped;
+      }
+      break;
+    }
   }
 
   // Booleans übersetzen die Images sehr unterschiedlich (`TRUE`, `true`,
@@ -106,12 +122,22 @@ function resolveEnv(
   return text;
 }
 
+/** `19140` bei einem Port, `19140-19159` bei einem Bereich. */
+export function portRange(first: number, count = 1): string {
+  return count > 1 ? `${first}-${first + count - 1}` : String(first);
+}
+
 /**
  * Baut die Startargumente. Ein Eintrag wird zu einem oder zwei Elementen:
  * `{flag: '-world', source: …}` ergibt `['-world', 'welt.wld']`, ein Eintrag
  * ohne Quelle nur das Flag selbst.
  */
-function buildArgs(mappings: ArgMapping[], values: FieldValues, ctx: TemplateContext): string[] {
+function buildArgs(
+  mappings: ArgMapping[],
+  values: FieldValues,
+  ctx: TemplateContext,
+  ports: PortSpec[],
+): string[] {
   const args: string[] = [];
   for (const mapping of mappings) {
     if (!mapping.source) {
@@ -130,6 +156,7 @@ function buildArgs(mappings: ArgMapping[], values: FieldValues, ctx: TemplateCon
       },
       values,
       ctx,
+      ports,
     );
     if (value === null) continue;
     if (mapping.flag) args.push(mapping.flag);

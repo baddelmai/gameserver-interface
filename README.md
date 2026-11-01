@@ -82,6 +82,13 @@ Rahmen — eigene Vorlagen entstehen im Editor unter „Vorlagen".
 | **Core Keeper** | `escaping/core-keeper-dedicated` | nein | nur aus dem Log | nein | keine |
 | **Barotrauma** | `goldfish92/barotrauma-dedicated-server` | nein | Zahl per Steam-Abfrage, Namen aus dem Log | nein | .sub |
 
+**Bedrock seit 26.50 (NetherNet):** Der Verbindungsaufbau läuft über **TCP**
+19132, die Spieldaten über einen **UDP-Bereich** (20 Ports ab 19140, ein Port
+je Spieler). Router und Firewall müssen beides durchlassen. Das Feld
+„Erreichbar unter" nennt die Adresse, die der Server den Spielern mitteilt:
+`<public_ip>` für Spieler über das Internet, die LAN-IP des Hosts für ein
+reines Heimnetz.
+
 Hintergrund:
 
 - **Valheim** kennt weder RCON noch stdin-Befehle — Admin-Befehle gibt es nur
@@ -201,6 +208,10 @@ Weiter umgesetzt:
 - Backup-Wiederherstellung und Mod-Upload prüfen, dass der Zielpfad innerhalb
   des Instanz-Volumes liegt.
 - Abgesetzte Konsolenbefehle werden mit Benutzer protokolliert.
+- Der Dateieditor im Config-Reiter erreicht nur die Volumes der Instanz. Pfade
+  werden über `realpath()` aufgelöst, damit ein symbolischer Verweis, den ein
+  Prozess im Container anlegt, nicht auf Host-Dateien führt. Jede Bearbeitung
+  steht mit Benutzer im Log und im Ereignisprotokoll.
 
 ## Backups
 
@@ -220,6 +231,7 @@ startet sie danach wieder.
 - `docs/architektur.md` — Entscheidungen und ihre Begründung
 - `docs/vorlage-hinzufuegen.md` — ein weiteres Spiel ergänzen
 - `docs/entwicklungsprotokoll.md` — Vorgehen, gefundene Fehler, Prüfvorgehen
+- `docs/erkenntnisse.md` — Lagebild der Codebasis für neue Sitzungen
 
 ## Grenzen und mögliche Erweiterungen
 
