@@ -251,7 +251,11 @@ export function NewInstance({
                   .map((port) => (
                     <div className="field" key={port.name}>
                       <label className="field__label" htmlFor={`port-${port.name}`}>
-                        {port.label} ({port.protocol})
+                        {port.label} ({port.protocol}
+                        {port.count && port.count > 1
+                          ? ` · ${port.count} Ports bis ${(ports[port.name] ?? port.defaultHost) + port.count - 1}`
+                          : ''}
+                        )
                       </label>
                       <div className="field__input">
                         <input

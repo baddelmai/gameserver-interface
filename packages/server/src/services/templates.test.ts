@@ -9,6 +9,7 @@ import {
   defaultValues,
   getTemplate,
   listTemplates,
+  minecraftBedrockDefinition,
   minecraftDefinition,
   valheimDefinition,
   validateSettings,
@@ -202,6 +203,65 @@ describe('Vorlagendienst', () => {
     expect(store.getTemplateRow('enshrouded')?.updated_at).not.toBe(stamp);
   });
 
+  /** Die Bedrock-Vorlage, wie sie vor NetherNet ausgeliefert wurde. */
+  function bedrockBeforeNetherNet(): Record<string, unknown> {
+    const d = minecraftBedrockDefinition;
+    return {
+      ...d,
+      notes: d.notes.filter((n) => !n.includes('NetherNet')),
+      ports: [{ name: 'game', label: 'Spielport', container: 19132, protocol: 'udp', defaultHost: 19132, internalOnly: false }],
+      fields: d.fields
+        .filter((f) => f.id !== 'publicAddress')
+        .map((f) => (f.id === 'maxPlayers' ? { ...f, max: 100, help: undefined } : f)),
+      env: [
+        ...d.env.filter((e) => !['SERVER_PORT', 'TRANSPORT', 'SERVER_UDP_PORTS'].includes(e.name)),
+        { name: 'SERVER_PORT', source: { kind: 'port', port: 'game' }, fallback: '19132', trim: false, omitWhenEmpty: false },
+        // Eine Anpassung des Betreibers, die die Migration stehen lassen muss.
+        { name: 'ENABLE_LAN_VISIBILITY', source: { kind: 'const', value: 'true' }, trim: false, omitWhenEmpty: false },
+      ],
+      validations: d.validations.filter((v) => v.field !== 'publicAddress'),
+    };
+  }
+
+  it('stellt eine alte Bedrock-Zeile auf NetherNet um', () => {
+    const stamp = '2026-01-01T00:00:00.000Z';
+    store.upsertTemplate('minecraft-bedrock', JSON.stringify(bedrockBeforeNetherNet()), true, stamp);
+
+    const { migrated } = service.seedAndLoad();
+    expect(migrated).toContain('minecraft-bedrock');
+
+    const definition = findTemplate('minecraft-bedrock')?.definition;
+    expect(definition?.ports.map((p) => [p.name, p.protocol, p.container, p.count])).toEqual([
+      ['game', 'tcp', 19132, undefined],
+      ['udp', 'udp', 19140, 20],
+    ]);
+    const env = Object.fromEntries((definition?.env ?? []).map((e) => [e.name, e.source]));
+    expect(env.TRANSPORT).toEqual({ kind: 'const', value: 'nethernet' });
+    expect(env.SERVER_PORT).toEqual({ kind: 'const', value: '19132' });
+    expect(env.SERVER_UDP_PORTS).toEqual({ kind: 'portMapping', port: 'udp', addressField: 'publicAddress' });
+    expect(env.ENABLE_LAN_VISIBILITY).toBeDefined();
+    expect(definition?.fields.find((f) => f.id === 'publicAddress')?.default).toBe('<public_ip>');
+    expect(definition?.fields.find((f) => f.id === 'maxPlayers')?.max).toBe(20);
+    // Der Container ändert sich — bestehende Instanzen sollen „Neu aufbauen“ anbieten.
+    expect(store.getTemplateRow('minecraft-bedrock')?.updated_at).not.toBe(stamp);
+  });
+
+  it('migriert eine schon umgestellte Bedrock-Zeile nicht noch einmal', () => {
+    const stamp = '2026-01-01T00:00:00.000Z';
+    store.upsertTemplate('minecraft-bedrock', JSON.stringify(minecraftBedrockDefinition), true, stamp);
+    expect(service.seedAndLoad().migrated).not.toContain('minecraft-bedrock');
+    expect(store.getTemplateRow('minecraft-bedrock')?.updated_at).toBe(stamp);
+  });
+
+  it('lässt eine nicht mitgelieferte Bedrock-Zeile in Ruhe', () => {
+    // `upsertTemplate` setzt `builtin` nur beim Einfügen — die Zeile muss
+    // deshalb als eigene entstehen, bevor das Seeding sie anlegen könnte.
+    const stamp = '2026-01-01T00:00:00.000Z';
+    store.upsertTemplate('minecraft-bedrock', JSON.stringify(bedrockBeforeNetherNet()), false, stamp);
+    expect(service.seedAndLoad().migrated).not.toContain('minecraft-bedrock');
+    expect(store.getTemplateRow('minecraft-bedrock')?.updated_at).toBe(stamp);
+  });
+
   it('lässt eigene Enshrouded-Rechte in Ruhe', () => {
     service.seedAndLoad();
     const own: TemplateDefinition = {
@@ -304,6 +364,25 @@ describe('Vorlagendienst', () => {
 
   describe('Schlüssigkeitsprüfung', () => {
     beforeEach(() => service.seedAndLoad());
+
+    it('prüft Portzuordnungen und Portbereiche', () => {
+      const broken = {
+        ...minecraftBedrockDefinition,
+        id: 'bedrock-kaputt',
+        ports: [
+          ...minecraftBedrockDefinition.ports.filter((p) => p.name !== 'udp'),
+          { name: 'udp', label: 'x', container: 65530, protocol: 'udp' as const, defaultHost: 19140, internalOnly: false, count: 20 },
+        ],
+        env: [
+          ...minecraftBedrockDefinition.env,
+          { name: 'X', source: { kind: 'portMapping' as const, port: 'gibtsnicht', addressField: 'auchnicht' }, trim: false, omitWhenEmpty: false },
+        ],
+      };
+      const messages = catchValidation(() => service.create(broken)).fields.map((f) => f.message);
+      expect(messages).toContain('Der Portbereich reicht über 65535 hinaus');
+      expect(messages).toContain('Unbekannter Port „gibtsnicht“');
+      expect(messages).toContain('Unbekanntes Feld „auchnicht“');
+    });
 
     it('meldet Env-Verweise auf unbekannte Felder und Ports', () => {
       const broken = customTemplate();

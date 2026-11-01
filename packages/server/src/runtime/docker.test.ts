@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demultiplex } from './docker.js';
+import { demultiplex, portBindings } from './docker.js';
 
 /** Baut einen Docker-Stream-Rahmen: 1 Byte Typ, 3 Byte Reserve, 4 Byte Länge. */
 function rahmen(text: string, typ = 1): Buffer {
@@ -34,5 +34,20 @@ describe('demultiplex', () => {
 
   it('kommt mit einem leeren Puffer zurecht', () => {
     expect(demultiplex(Buffer.alloc(0))).toEqual({ payload: '', rest: Buffer.alloc(0) });
+  });
+});
+
+describe('portBindings', () => {
+  it('schreibt einen Portbereich als einzelne Bindungen aus', () => {
+    const bindings = portBindings([
+      { container: 19132, protocol: 'tcp', host: 19200 },
+      { container: 19140, protocol: 'udp', host: 19300, count: 3 },
+    ]);
+    expect(bindings).toEqual([
+      { key: '19132/tcp', hostPort: '19200' },
+      { key: '19140/udp', hostPort: '19300' },
+      { key: '19141/udp', hostPort: '19301' },
+      { key: '19142/udp', hostPort: '19302' },
+    ]);
   });
 });

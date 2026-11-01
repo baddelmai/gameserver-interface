@@ -1,6 +1,8 @@
 import type {
   Backup,
   CreateInstanceRequest,
+  FileContent,
+  FileListing,
   HostStatus,
   Instance,
   Job,
@@ -177,6 +179,23 @@ export const api = {
     form.append('file', file);
     return request<{ job: Job }>(`/api/instances/${id}/world`, { method: 'POST', body: form });
   },
+
+  files: (id: string, volume: string, path: string) =>
+    request<FileListing>(
+      `/api/instances/${id}/files?volume=${encodeURIComponent(volume)}&path=${encodeURIComponent(path)}`,
+    ),
+  readFile: (id: string, volume: string, path: string) =>
+    request<FileContent>(
+      `/api/instances/${id}/files/content?volume=${encodeURIComponent(volume)}&path=${encodeURIComponent(path)}`,
+    ),
+  saveFile: (
+    id: string,
+    body: { volume: string; path: string; content: string; rev: string; force?: boolean; restart?: boolean },
+  ) =>
+    request<FileContent>(`/api/instances/${id}/files/content`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   mods: (id: string) => request<{ mods: Mod[] }>(`/api/instances/${id}/mods`),
   setModEnabled: (id: string, file: string, enabled: boolean) =>

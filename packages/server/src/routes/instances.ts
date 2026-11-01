@@ -14,6 +14,7 @@ import {
   toDescriptor,
   updateSettingsRequestSchema,
   formatBytes,
+  saveFileRequestSchema,
   worldUploadOptionsSchema,
 } from '@gsp/shared';
 import { getAdapter, UnsupportedError } from '../games/index.js';
@@ -27,6 +28,7 @@ import type { ModService } from '../services/mods.js';
 import type { TemplateService } from '../services/templates.js';
 import type { Ticker } from '../services/ticker.js';
 import { WorldError, type WorldService } from '../services/world.js';
+import { FileError, type FileService } from '../services/files.js';
 import { needsZip64, packZip, collectEntries } from '../services/world-zip.js';
 import type { Config } from '../config.js';
 import { slug } from '../services/paths.js';
@@ -41,6 +43,7 @@ interface Deps {
   ticker: Ticker;
   templates: TemplateService;
   world: WorldService;
+  files: FileService;
   config: Config;
 }
 
@@ -69,7 +72,7 @@ function fieldValue(fields: unknown, name: string): string | undefined {
 }
 
 export async function instanceRoutes(app: FastifyInstance, deps: Deps): Promise<void> {
-  const { instances, store, logs, mods, backups, jobs, ticker, templates, world, config } = deps;
+  const { instances, store, logs, mods, backups, jobs, ticker, templates, world, files, config } = deps;
 
   /** Bricht mit 404 ab, wenn die Instanz nicht existiert. */
   const need = (id: string) => {
@@ -391,6 +394,61 @@ export async function instanceRoutes(app: FastifyInstance, deps: Deps): Promise<
     },
   );
 
+  // --- Konfigurationsdateien ------------------------------------------------
+
+  app.get<{ Params: { id: string }; Querystring: { volume?: string; path?: string } }>(
+    '/api/instances/:id/files',
+    async (request, reply) => {
+      const instance = need(request.params.id);
+      try {
+        return await files.list(instance, request.query.volume ?? '', request.query.path ?? '');
+      } catch (err) {
+        return fileError(reply, err);
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string }; Querystring: { volume?: string; path?: string } }>(
+    '/api/instances/:id/files/content',
+    async (request, reply) => {
+      const instance = need(request.params.id);
+      try {
+        return await files.read(instance, request.query.volume ?? '', request.query.path ?? '');
+      } catch (err) {
+        return fileError(reply, err);
+      }
+    },
+  );
+
+  app.put<{ Params: { id: string } }>(
+    '/api/instances/:id/files/content',
+    // Der Inhalt darf bis 1 MiB groß sein; als JSON-Zeichenkette mit
+    // maskierten Anführungszeichen und Zeilenenden wird er größer als das
+    // globale Limit von 2 MB.
+    { bodyLimit: 8 * 1024 * 1024 },
+    async (request, reply) => {
+      const instance = need(request.params.id);
+      const parsed = saveFileRequestSchema.safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'Ungültige Eingabe' });
+
+      let saved;
+      try {
+        saved = await files.write(instance, parsed.data);
+      } catch (err) {
+        return fileError(reply, err);
+      }
+
+      // Wer was geändert hat, gehört ins Ereignisprotokoll — eine von Hand
+      // bearbeitete Datei ist die erste Spur, wenn ein Server danach nicht mehr startet.
+      const user = request.session?.username ?? 'unbekannt';
+      app.log.info({ instance: instance.id, user, file: `${saved.volume}/${saved.path}` }, 'Datei bearbeitet');
+      instances.announce(instance.id, `${saved.path} von Hand bearbeitet`);
+
+      if (parsed.data.restart) await instances.restart(instance.id);
+      return saved;
+    },
+  );
+
   // --- Mods -----------------------------------------------------------------
 
   app.get<{ Params: { id: string } }>('/api/instances/:id/mods', async (request) => {
@@ -436,6 +494,12 @@ export async function instanceRoutes(app: FastifyInstance, deps: Deps): Promise<
     if (!job) return reply.code(404).send({ error: 'Job nicht gefunden' });
     return job;
   });
+}
+
+/** Fehler des Dateidienstes tragen ihren Statuscode selbst; alles andere geht an den globalen Handler. */
+function fileError(reply: { code: (n: number) => { send: (b: unknown) => unknown } }, err: unknown) {
+  if (err instanceof FileError) return reply.code(err.status).send({ error: err.message });
+  throw err;
 }
 
 function unsupported(reply: { code: (n: number) => { send: (b: unknown) => unknown } }, err: unknown) {

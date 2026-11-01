@@ -38,6 +38,16 @@ export const portSpecSchema = z.object({
   defaultHost: z.number().int(),
   /** Wird nicht auf den Host veröffentlicht (z. B. RCON). */
   internalOnly: z.boolean().default(false),
+  /**
+   * Anzahl aufeinanderfolgender Ports ab `container` bzw. dem Host-Port.
+   * Fehlt bei fast allen Vorlagen — ein Port ist der Normalfall.
+   *
+   * Nötig wurde das mit NetherNet: Bedrock 26.50 gibt jedem Spieler einen
+   * eigenen UDP-Port aus einem Bereich, und der Bereich muss vollständig
+   * veröffentlicht sein. Optional statt `.default(1)`, damit die zwanzig
+   * mitgelieferten Vorlagen nicht jeden Port um `count: 1` ergänzen müssen.
+   */
+  count: z.number().int().min(1).max(100).optional(),
 });
 export type PortSpec = z.infer<typeof portSpecSchema>;
 

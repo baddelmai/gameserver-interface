@@ -21,6 +21,7 @@ import { LogService } from './services/logs.js';
 import { MetricsService } from './services/metrics.js';
 import { ModService } from './services/mods.js';
 import { WorldService } from './services/world.js';
+import { FileService } from './services/files.js';
 import { Scheduler } from './services/scheduler.js';
 import { TemplateService } from './services/templates.js';
 import { DraftService } from './services/template-ai.js';
@@ -97,6 +98,7 @@ export async function buildApp(config: Config, runtimeOverride?: Runtime): Promi
   const backups = new BackupService(store, config.volumeDir, config.backupDir);
   const mods = new ModService(config.volumeDir);
   const world = new WorldService(config);
+  const files = new FileService(config.volumeDir);
   const instances = new InstanceService(
     config, store, runtime, logs, metrics, backups, jobs, hub, templates, world,
   );
@@ -154,7 +156,7 @@ export async function buildApp(config: Config, runtimeOverride?: Runtime): Promi
   });
 
   await server.register(authRoutes, { auth, config });
-  await server.register(instanceRoutes, { instances, store, logs, mods, backups, jobs, ticker, templates, world, config });
+  await server.register(instanceRoutes, { instances, store, logs, mods, backups, jobs, ticker, templates, world, files, config });
   await server.register(templateRoutes, { templates, instances, jobs, drafts });
   await server.register(websocketRoute, { auth, hub, logs, ticker });
 

@@ -430,6 +430,150 @@ describe('API-Durchlauf', () => {
     }
   });
 
+  describe('Konfigurationsdateien', () => {
+    const propertiesPath = () => join(dataDir, 'instances', instanceId, 'data', 'server.properties');
+
+    it('listet, liest und speichert eine Datei im Volume', async () => {
+      writeFileSync(propertiesPath(), 'motd=Hallo\nmax-players=20\n');
+
+      const listing = await app.server.inject({
+        method: 'GET',
+        url: `/api/instances/${instanceId}/files?volume=data`,
+        headers: headersFor(false),
+      });
+      expect(listing.statusCode).toBe(200);
+      expect(listing.json<{ entries: { name: string }[] }>().entries.map((e) => e.name)).toContain(
+        'server.properties',
+      );
+
+      const read = await app.server.inject({
+        method: 'GET',
+        url: `/api/instances/${instanceId}/files/content?volume=data&path=server.properties`,
+        headers: headersFor(false),
+      });
+      expect(read.statusCode).toBe(200);
+      const file = read.json<{ content: string; rev: string }>();
+      expect(file.content).toContain('motd=Hallo');
+
+      const saved = await app.server.inject({
+        method: 'PUT',
+        url: `/api/instances/${instanceId}/files/content`,
+        headers: headersFor(),
+        payload: {
+          volume: 'data',
+          path: 'server.properties',
+          content: file.content.replace('Hallo', 'Servus'),
+          rev: file.rev,
+        },
+      });
+      expect(saved.statusCode).toBe(200);
+      expect(readFileSync(propertiesPath(), 'utf8')).toContain('motd=Servus');
+
+      // Mit dem alten Stand noch einmal: das wäre ein stilles Überschreiben.
+      const stale = await app.server.inject({
+        method: 'PUT',
+        url: `/api/instances/${instanceId}/files/content`,
+        headers: headersFor(),
+        payload: { volume: 'data', path: 'server.properties', content: 'motd=Alt\n', rev: file.rev },
+      });
+      expect(stale.statusCode).toBe(409);
+
+      // Die Bearbeitung steht im Ereignisprotokoll der Instanz.
+      const detail = await app.server.inject({
+        method: 'GET',
+        url: `/api/instances/${instanceId}`,
+        headers: headersFor(false),
+      });
+      expect(detail.json<{ events: { text: string }[] }>().events.map((e) => e.text)).toContain(
+        'server.properties von Hand bearbeitet',
+      );
+    });
+
+    it('verlangt auch beim Speichern einer Datei den CSRF-Token', async () => {
+      const response = await app.server.inject({
+        method: 'PUT',
+        url: `/api/instances/${instanceId}/files/content`,
+        headers: headersFor(false),
+        payload: { volume: 'data', path: 'server.properties', content: 'x', rev: 'x' },
+      });
+      expect(response.statusCode).toBe(403);
+    });
+
+    it('antwortet auf unbekannte Volumes und Ausbruchsversuche mit Fehlern statt Inhalten', async () => {
+      const unknown = await app.server.inject({
+        method: 'GET',
+        url: `/api/instances/${instanceId}/files?volume=etc`,
+        headers: headersFor(false),
+      });
+      expect(unknown.statusCode).toBe(404);
+
+      const traversal = await app.server.inject({
+        method: 'GET',
+        url: `/api/instances/${instanceId}/files/content?volume=data&path=../../../panel.db`,
+        headers: headersFor(false),
+      });
+      expect(traversal.statusCode).toBe(400);
+    });
+  });
+
+  describe('Portbereiche (Bedrock über NetherNet)', () => {
+    const createBedrock = async (name: string, ports: { name: string; host: number }[]) =>
+      app.server.inject({
+        method: 'POST',
+        url: '/api/instances',
+        headers: headersFor(),
+        payload: { game: 'minecraft-bedrock', name, ports, memoryMb: 2048, cpus: 2, settings: {} },
+      });
+
+    const suggestion = async () =>
+      (
+        await app.server.inject({
+          method: 'GET',
+          url: '/api/templates/minecraft-bedrock/ports',
+          headers: headersFor(false),
+        })
+      ).json<{ ports: Record<string, number> }>().ports;
+
+    it('schlägt für eine zweite Instanz einen Bereich vor, der den ersten nicht überlappt', async () => {
+      const first = await suggestion();
+      expect(first).toEqual({ game: 19132, udp: 19140 });
+      const created = await createBedrock('Inselreich', Object.entries(first).map(([name, host]) => ({ name, host })));
+      expect(created.statusCode).toBe(201);
+
+      // 19140–19159 sind belegt; der nächste freie Bereich beginnt danach.
+      const second = await suggestion();
+      expect(second.udp).toBe(19160);
+    });
+
+    it('weist einen Bereich ab, der in einen belegten hineinragt', async () => {
+      const response = await createBedrock('Kollision', [
+        { name: 'game', host: 19133 },
+        { name: 'udp', host: 19130 },
+      ]);
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: string }>().error).toMatch(/19132|1914\d/);
+    });
+
+    it('trägt einer alten Instanz beim Neuaufbau einen freien UDP-Bereich nach', async () => {
+      const store = app.services.store;
+      const old = store.listInstances().find((i) => i.name === 'Inselreich')!;
+      // So sah eine Bedrock-Instanz vor NetherNet aus: nur der Spielport.
+      store.updateInstance(old.id, { ports: { game: old.ports.game! } });
+
+      // Speichern mit Neustart erzeugt den Container neu.
+      const saved = await app.server.inject({
+        method: 'PATCH',
+        url: `/api/instances/${old.id}/settings`,
+        headers: headersFor(),
+        payload: { settings: { maxPlayers: 8 }, restart: true },
+      });
+      expect(saved.statusCode).toBe(200);
+      const ports = store.getInstance(old.id)!.ports;
+      expect(ports.game).toBe(old.ports.game);
+      expect(ports.udp).toBeGreaterThanOrEqual(19140);
+    });
+  });
+
   it('speichert geänderte Einstellungen und erzeugt den Container neu', async () => {
     const response = await app.server.inject({
       method: 'PATCH',

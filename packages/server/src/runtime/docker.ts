@@ -7,6 +7,7 @@ import {
   type ContainerState,
   type ExecResult,
   type LogOptions,
+  type PortBinding,
   type PullProgress,
   type Runtime,
   type RuntimeHealth,
@@ -108,10 +109,11 @@ export class DockerRuntime implements Runtime {
   async create(spec: ContainerSpec): Promise<string> {
     const exposed: Record<string, Record<string, never>> = {};
     const bindings: Record<string, { HostPort: string }[]> = {};
-    for (const port of spec.ports) {
-      const key = `${port.container}/${port.protocol}`;
-      exposed[key] = {};
-      bindings[key] = [{ HostPort: String(port.host) }];
+    // Ein Bereich wird zu einzelnen Bindungen: die Engine-API kennt keine
+    // Bereiche, nur `docker run -p` übersetzt sie selbst.
+    for (const binding of portBindings(spec.ports)) {
+      exposed[binding.key] = {};
+      bindings[binding.key] = [{ HostPort: binding.hostPort }];
     }
 
     const container = await this.docker.createContainer({
@@ -283,6 +285,17 @@ export class DockerRuntime implements Runtime {
  * (1 Byte Stream-Typ, 3 Byte Reserve, 4 Byte Länge). Ein unvollständiger Block
  * am Ende wird zurückgegeben und beim nächsten Aufruf ergänzt.
  */
+/** Schreibt Portbereiche als einzelne Bindungen aus: `19140/udp` → `19140`, `19141/udp` → `19141` … */
+export function portBindings(ports: PortBinding[]): { key: string; hostPort: string }[] {
+  const out: { key: string; hostPort: string }[] = [];
+  for (const port of ports) {
+    for (let i = 0; i < (port.count ?? 1); i += 1) {
+      out.push({ key: `${port.container + i}/${port.protocol}`, hostPort: String(port.host + i) });
+    }
+  }
+  return out;
+}
+
 export function demultiplex(buffer: Bytes): { payload: string; rest: Bytes } {
   let offset = 0;
   const parts: Buffer[] = [];

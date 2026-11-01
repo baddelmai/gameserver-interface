@@ -116,6 +116,7 @@ services/        Geschäftslogik
   ticker.ts      Messtakt, verteilt Schnappschüsse an WebSocket-Abonnenten
   logs.ts        Log-Stream, Zeileneinstufung, Spieler-Tracking
   jobs.ts        langlaufende Aktionen mit Fortschritt
+  files.ts       Konfigurationsdateien lesen und schreiben (Config-Reiter, „Dateien")
   templates.ts   Vorlagen laden, seeden, prüfen; füllt die Registry
   vorlagen-ki.ts KI-Entwurf: Recherche mit Websuche, dann Formen
 games/           pro Spiel ein Adapter (RCON, A2S, Log)
@@ -234,3 +235,5 @@ GSP_GEMINI_API_KEY=... node scripts/entwurf-testen.mjs "Terraria" "ryshe/terrari
 - `docs/architektur.md` — Entscheidungen und ihre Begründung
 - `docs/vorlage-hinzufuegen.md` — neues Spiel ergänzen
 - `docs/entwicklungsprotokoll.md` — ursprünglicher Plan, Abweichungen, gefundene Fehler
+- `docs/erkenntnisse.md` — Lagebild für neue Sitzungen: wo was liegt, wie ein Feature
+  durch die Schichten läuft, Eigenheiten dieser Windows-Maschine, offene Punkte

@@ -190,7 +190,7 @@ export function validateSettings(
   return errors;
 }
 
-export { compileTemplate, applyValidations } from './compile.js';
+export { compileTemplate, applyValidations, portRange } from './compile.js';
 export { renderFakeLine, DEFAULT_FAKE_LOG } from './fakelog.js';
 export {
   worldTarget,

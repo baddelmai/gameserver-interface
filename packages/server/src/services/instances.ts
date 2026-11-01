@@ -9,6 +9,7 @@ import {
   validateSettings,
   type CreateInstanceRequest,
   type GameId,
+  type PortSpec,
   type Instance,
   type InstanceStatus,
   type Job,
@@ -100,7 +101,7 @@ export class InstanceService {
     }
 
     const ports = this.resolvePorts(request.game, request.ports);
-    const conflict = this.findPortConflict(ports);
+    const conflict = this.findPortConflict(request.game, ports);
     if (conflict) {
       throw new ValidationError(`Port ${conflict} ist bereits belegt`, [
         { field: 'ports', message: `Port ${conflict} ist bereits belegt` },
@@ -162,6 +163,7 @@ export class InstanceService {
   /** Legt Verzeichnisse an und erstellt den Container aus der Vorlage. */
   private async createContainer(record: InstanceRecord): Promise<void> {
     const template = getTemplate(record.game);
+    this.completePorts(record);
 
     const binds = [];
     for (const volume of template.volumes) {
@@ -197,6 +199,7 @@ export class InstanceService {
           container: port.container,
           protocol: port.protocol,
           host: record.ports[port.name] ?? port.defaultHost,
+          ...(port.count !== undefined ? { count: port.count } : {}),
         })),
       binds,
       memoryMb: record.memoryMb,
@@ -628,28 +631,90 @@ export class InstanceService {
     return ports;
   }
 
-  /** Erster Port, der bereits von einer anderen Instanz belegt ist. */
-  findPortConflict(ports: Record<string, number>, exceptInstanceId?: string): number | null {
-    const used = new Set(this.store.usedPorts(exceptInstanceId));
-    for (const port of Object.values(ports)) {
-      if (used.has(port)) return port;
+  /**
+   * Erster Host-Port, der bereits von einer anderen Instanz belegt ist.
+   * Bereiche zählen mit jedem ihrer Ports — Bedrocks UDP-Bereich ab 19140
+   * belegt nicht nur 19140.
+   */
+  findPortConflict(game: GameId, ports: Record<string, number>, exceptInstanceId?: string): number | null {
+    const used = this.usedHostPorts(exceptInstanceId);
+    const specs = getTemplate(game).ports;
+    for (const [name, first] of Object.entries(ports)) {
+      for (const port of expand(first, specs.find((s) => s.name === name)?.count)) {
+        if (used.has(port)) return port;
+      }
     }
     return null;
   }
 
   /** Schlägt für eine Vorlage freie Host-Ports vor. */
   suggestPorts(game: GameId): Record<string, number> {
-    const template = getTemplate(game);
-    const used = new Set(this.store.usedPorts());
-    const ports: Record<string, number> = {};
-    for (const spec of template.ports) {
-      if (spec.internalOnly) continue;
+    return this.allocate(getTemplate(game).ports, this.usedHostPorts(), {});
+  }
+
+  /**
+   * Trägt Ports nach, die die Vorlage inzwischen verlangt, die Instanz aber
+   * nicht kennt — etwa den UDP-Bereich, den Bedrock seit NetherNet braucht.
+   *
+   * Ohne das bekäme jede bestehende Instanz beim Neuaufbau den Vorschlag der
+   * Vorlage, und zwei Bedrock-Instanzen stritten sich um denselben Bereich.
+   * Vorhandene Zuordnungen bleiben unangetastet: die Spieler kennen sie.
+   */
+  completePorts(record: InstanceRecord): void {
+    const specs = getTemplate(record.game).ports.filter((s) => !s.internalOnly);
+    if (specs.every((s) => record.ports[s.name] !== undefined)) return;
+
+    const used = this.usedHostPorts(record.id);
+    for (const [name, first] of Object.entries(record.ports)) {
+      for (const port of expand(first, specs.find((s) => s.name === name)?.count)) used.add(port);
+    }
+    const ports = this.allocate(specs, used, record.ports);
+    record.ports = ports;
+    this.store.updateInstance(record.id, { ports });
+  }
+
+  /** Belegt je Port den ersten freien Platz ab dem Vorschlag der Vorlage — bei Bereichen den ganzen Bereich. */
+  private allocate(
+    specs: PortSpec[],
+    used: Set<number>,
+    existing: Record<string, number>,
+  ): Record<string, number> {
+    const ports: Record<string, number> = { ...existing };
+    for (const spec of specs) {
+      if (spec.internalOnly || ports[spec.name] !== undefined) continue;
       let candidate = spec.defaultHost;
-      while (used.has(candidate) && candidate < 65_535) candidate += 1;
-      used.add(candidate);
+      while (expand(candidate, spec.count).some((p) => used.has(p)) && candidate < 65_535) candidate += 1;
+      for (const port of expand(candidate, spec.count)) used.add(port);
       ports[spec.name] = candidate;
     }
     return ports;
+  }
+
+  /** Alle Host-Ports der übrigen Instanzen, Bereiche ausgeschrieben. */
+  private usedHostPorts(exceptInstanceId?: string): Set<number> {
+    const used = new Set<number>();
+    for (const instance of this.list()) {
+      if (instance.id === exceptInstanceId) continue;
+      // Eine Instanz, deren Vorlage gelöscht wurde, belegt ihre Ports trotzdem.
+      let specs: PortSpec[] = [];
+      try {
+        specs = getTemplate(instance.game).ports;
+      } catch {
+        // Ohne Vorlage zählt jeder gespeicherte Port einzeln.
+      }
+      for (const [name, first] of Object.entries(instance.ports)) {
+        for (const port of expand(first, specs.find((s) => s.name === name)?.count)) used.add(port);
+      }
+    }
+    return used;
+  }
+
+  /**
+   * Ein Ereignis von außerhalb des Lebenszyklus — etwa eine von Hand
+   * bearbeitete Datei. Landet wie alle anderen in Protokoll, Log und Übersicht.
+   */
+  announce(id: string, text: string): void {
+    this.event(id, text);
   }
 
   // --- Hilfen ---------------------------------------------------------------
@@ -670,6 +735,11 @@ export class InstanceService {
     this.store.addEvent(id, message);
     this.logs.append(id, { time: clockHms(), level: 'ERROR', text: message });
   }
+}
+
+/** Die Ports eines Eintrags: einer, oder bei `count` der ganze Bereich. */
+function expand(first: number, count = 1): number[] {
+  return Array.from({ length: count }, (_, i) => first + i);
 }
 
 /** `0 4 * * *` mit 7 Tagen wird zu `täglich 04:00 · 7 Tage`. */
