@@ -1,6 +1,6 @@
 # Erkenntnisse für neue Sitzungen
 
-Lagebild der Codebasis, Stand 01.11.2026 (v0.4.0).
+Lagebild der Codebasis, Stand 01.11.2026 (v0.4.1).
 Ergänzt `CLAUDE.md`, ohne es zu wiederholen: dort stehen Befehle, Architektur und
 Fallstricke, hier das, was man beim Einarbeiten erst zusammensuchen muss.
 
