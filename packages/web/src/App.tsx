@@ -382,6 +382,12 @@ function Panel({ session, onLogout }: { session: SessionInfo; onLogout: () => vo
                   backups={backups}
                   busy={busy}
                   downloadUrl={(backup) => api.backupDownloadUrl(instance.id, backup.id)}
+                  onUpload={(file) =>
+                    void run(
+                      () => api.uploadBackup(instance.id, file),
+                      () => api.backups(instance.id).then((a) => setBackups(a.backups)),
+                    )
+                  }
                   onUpdate={() => void run(() => api.update(instance.id))}
                   onCreate={() =>
                     void run(

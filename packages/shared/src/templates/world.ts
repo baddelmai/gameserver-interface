@@ -29,6 +29,8 @@ export interface WorldTarget {
   main: WorldTargetPart;
   markers: string[];
   accept: string[];
+  /** Endungen, die wie `.zip` entpackt werden. */
+  archives: string[];
 }
 
 /** Der Weltname taugt nicht als Pfadbestandteil. */
@@ -98,6 +100,7 @@ export function worldTarget(template: GameTemplate, values: FieldValues): WorldT
     main,
     markers: world.markers,
     accept: world.accept,
+    archives: world.archives ?? [],
   };
 }
 

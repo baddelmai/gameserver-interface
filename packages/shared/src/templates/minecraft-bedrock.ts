@@ -199,13 +199,20 @@ export const minecraftBedrockDefinition: TemplateDefinition = {
 
   modExtensions: [],
 
-  /* Bedrock legt jede Welt als eigenes Verzeichnis unter `worlds/` ab. */
+  /*
+   * Bedrock legt jede Welt als eigenes Verzeichnis unter `worlds/` ab.
+   * Karten werden als `.mcworld` verteilt: ein ZIP mit `level.dat`,
+   * `levelname.txt` und `db/` auf oberster Ebene, ohne umschließenden Ordner.
+   * Es landet unter dem Weltnamen der Instanz, `levelname.txt` ändert nur den
+   * im Spiel angezeigten Namen.
+   */
   world: {
     parent: '/data/worlds',
     name: { kind: 'field', field: 'levelName' },
     parts: [{ suffix: '', type: 'dir', required: true }],
     markers: ['level.dat'],
     accept: [],
+    archives: ['.mcworld'],
   },
 
   backup: {

@@ -310,6 +310,20 @@ describe('API-Durchlauf', () => {
     });
     expect(unknown.statusCode).toBe(404);
 
+    // Das Heruntergeladene wieder hochladen: es erscheint als weiterer Snapshot.
+    const form = multipart({}, { name: 'file', fileName: backup.file, content: download.rawPayload });
+    const uploaded = await app.server.inject({
+      method: 'POST',
+      url: `/api/instances/${instanceId}/backups/upload`,
+      headers: { ...headersFor(), ...form.headers },
+      payload: form.body,
+    });
+    expect(uploaded.statusCode).toBe(200);
+    const copy = uploaded.json<{ backup: { file: string; kind: string } }>().backup;
+    // Der Name ist schon vergeben — die Kopie bekommt eine Nummer.
+    expect(copy.file).toBe(backup.file.replace('.tar.zst', '-1.tar.zst'));
+    expect(copy.kind).toBe('manuell');
+
     // Welt löschen und aus dem Backup zurückholen.
     rmSync(worldDir, { recursive: true, force: true });
     const restored = await app.server.inject({
@@ -322,6 +336,55 @@ describe('API-Durchlauf', () => {
     await warteAuf(async () => {
       const { existsSync } = await import('node:fs');
       return existsSync(join(worldDir, 'level.dat'));
+    });
+  });
+
+  describe('Backup hochladen', () => {
+    /** Ein `.tar.zst` wie vom Panel, aber mit frei gewähltem Inhalt. */
+    async function tarZst(files: Record<string, string>): Promise<Buffer> {
+      const { create } = await import('tar');
+      const { createZstdCompress } = await import('node:zlib');
+      const src = mkdtempSync(join(tmpdir(), 'gsp-tar-'));
+      for (const [name, content] of Object.entries(files)) {
+        mkdirSync(join(src, name, '..'), { recursive: true });
+        writeFileSync(join(src, name), content);
+      }
+      const chunks: Buffer[] = [];
+      const stream = create({ cwd: src, portable: true }, Object.keys(files)).pipe(createZstdCompress());
+      for await (const chunk of stream as AsyncIterable<Buffer>) chunks.push(chunk);
+      rmSync(src, { recursive: true, force: true });
+      return Buffer.concat(chunks);
+    }
+
+    const upload = async (fileName: string, content: Buffer) => {
+      const form = multipart({}, { name: 'file', fileName, content });
+      return app.server.inject({
+        method: 'POST',
+        url: `/api/instances/${instanceId}/backups/upload`,
+        headers: { ...headersFor(), ...form.headers },
+        payload: form.body,
+      });
+    };
+
+    it('lehnt Archive mit Pfaden außerhalb der gesicherten Verzeichnisse ab', async () => {
+      // Minecraft sichert `/data` — `config/` gehört nicht dazu.
+      const response = await upload('fremd.tar.zst', await tarZst({ 'config/server.yml': 'x' }));
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: string }>().error).toMatch(/gesicherten Pfaden/);
+    });
+
+    it('lehnt Dateien ab, die kein Backup sind', async () => {
+      const wrongName = await upload('welt.zip', Buffer.from('PK'));
+      expect(wrongName.statusCode).toBe(400);
+      const garbage = await upload('kaputt.tar.zst', Buffer.from('kein zstd'));
+      expect(garbage.statusCode).toBe(400);
+      expect(garbage.json<{ error: string }>().error).toMatch(/kein lesbares Backup/);
+    });
+
+    it('nimmt ein passendes Archiv an', async () => {
+      const response = await upload('anderer-server.tar.zst', await tarZst({ 'data/welt/level.dat': 'x' }));
+      expect(response.statusCode).toBe(200);
+      expect(response.json<{ backup: { file: string } }>().backup.file).toBe('anderer-server.tar.zst');
     });
   });
 

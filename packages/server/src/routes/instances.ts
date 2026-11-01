@@ -19,7 +19,7 @@ import {
 } from '@gsp/shared';
 import { getAdapter, UnsupportedError } from '../games/index.js';
 import type { Store } from '../db/store.js';
-import type { BackupService } from '../services/backups.js';
+import { BackupError, type BackupService } from '../services/backups.js';
 import type { InstanceService } from '../services/instances.js';
 import { ValidationError } from '../services/instances.js';
 import type { JobService } from '../services/jobs.js';
@@ -265,6 +265,36 @@ export async function instanceRoutes(app: FastifyInstance, deps: Deps): Promise<
         return reply.code(404).send({ error: 'Backup nicht gefunden' });
       }
       return { job: instances.restore(request.params.id, request.params.backupId) };
+    },
+  );
+
+  /**
+   * Ein heruntergeladenes Backup wieder hochladen. Es erscheint als Snapshot
+   * und wird erst über „Restore“ eingespielt — der Upload selbst ändert an der
+   * Instanz nichts und geht deshalb auch, während sie läuft.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/api/instances/:id/backups/upload',
+    { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } },
+    async (request, reply) => {
+      const instance = need(request.params.id);
+      // Dieselbe Grenze wie für Welten: ein Backup ist im Kern eine Welt.
+      const upload = await request.file({ limits: { fileSize: config.worldUploadMaxBytes, files: 1 } });
+      if (!upload) return reply.code(400).send({ error: 'Keine Datei übertragen' });
+      try {
+        const backup = await backups.importUpload(
+          instance,
+          upload.filename,
+          upload.file,
+          () => upload.file.truncated,
+          config.worldUploadMaxBytes,
+        );
+        store.addEvent(instance.id, `Backup ${backup.file} hochgeladen`);
+        return { backup };
+      } catch (err) {
+        if (err instanceof BackupError) return reply.code(400).send({ error: err.message });
+        throw err;
+      }
     },
   );
 
