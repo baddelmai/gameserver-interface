@@ -162,6 +162,49 @@ describe('Entgegennahme', () => {
   });
 });
 
+describe('Bedrock-Karten (.mcworld)', () => {
+  const bedrock = () => instance('minecraft-bedrock', { levelName: 'Bedrock level' });
+
+  it('nimmt .mcworld an und bietet sie im Dateidialog an', async () => {
+    const service = new WorldService(config);
+    const target = service.target(bedrock())!;
+    const { ext } = await service.receive(target, 'Skyblock.mcworld', Readable.from(['x']));
+    expect(ext).toBe('.mcworld');
+    // Entpackt wird sie trotzdem — sie ist keine rohe Weltdatei.
+    expect(service.isRawWorldFile(target, '.mcworld')).toBe(false);
+    expect((await service.info(bedrock()))?.accept).toEqual(['.zip', '.mcworld']);
+  });
+
+  it('spielt eine .mcworld ohne Hülle unter dem Weltnamen der Instanz ein', async () => {
+    writeFile(worldPath('data', 'worlds', 'Bedrock level', 'level.dat'), 'alt');
+    writeFile(worldPath('data', 'worlds', 'Bedrock level', 'db', '000001.ldb'), 'alt');
+
+    // So liegt eine Karte aus dem Marketplace oder von einer Kartenseite vor:
+    // alles auf oberster Ebene, kein umschließender Ordner.
+    const archive = await buildZip(join(tmpRoot, 'Skyblock.mcworld'), {
+      'level.dat': 'skyblock',
+      'levelname.txt': 'Skyblock',
+      'db/CURRENT': 'MANIFEST-000002',
+      'db/000005.ldb': 'chunks',
+    });
+
+    await new WorldService(config).importWorld(
+      bedrock(),
+      { path: archive, ext: '.mcworld' },
+      extract,
+      (a) => readEntries(a, config.worldUploadMaxBytes),
+      () => {},
+    );
+
+    const dir = (...p: string[]) => worldPath('data', 'worlds', 'Bedrock level', ...p);
+    expect(readFileSync(dir('level.dat'), 'utf8')).toBe('skyblock');
+    expect(readFileSync(dir('levelname.txt'), 'utf8')).toBe('Skyblock');
+    expect(readFileSync(dir('db', '000005.ldb'), 'utf8')).toBe('chunks');
+    // Die Datenbank der alten Welt darf nicht mit der neuen vermischt werden.
+    expect(() => readFileSync(dir('db', '000001.ldb'))).toThrow();
+  });
+});
+
 describe('Austausch', () => {
   const service = () => new WorldService(config);
 

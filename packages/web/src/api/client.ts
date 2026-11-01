@@ -159,6 +159,11 @@ export const api = {
   createBackup: (id: string) => request<{ job: Job }>(`/api/instances/${id}/backups`, { method: 'POST' }),
   restoreBackup: (id: string, backupId: string) =>
     request<{ job: Job }>(`/api/instances/${id}/backups/${backupId}/restore`, { method: 'POST' }),
+  uploadBackup: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<{ backup: Backup }>(`/api/instances/${id}/backups/upload`, { method: 'POST', body: form });
+  },
   /** Nur die URL — aus demselben Grund wie bei `worldDownloadUrl`. */
   backupDownloadUrl: (id: string, backupId: string) => `/api/instances/${id}/backups/${backupId}/download`,
   deleteBackup: (id: string, backupId: string) =>

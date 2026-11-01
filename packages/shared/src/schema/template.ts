@@ -131,6 +131,14 @@ export const worldDefinitionSchema = z.object({
    * heißt schlicht `welt`, und eine Datei ohne Endung nützt dem Benutzer nichts.
    */
   accept: z.array(z.string()).default([]),
+  /**
+   * Weitere Endungen, die **wie ein ZIP entpackt** werden — das Gegenstück zu
+   * `accept`. Bedrocks `.mcworld` ist ein ZIP mit dem Inhalt des
+   * Weltverzeichnisses, nur anders benannt; so verteilen Kartenbauer ihre
+   * Karten. Optional statt `.default([])`, damit die übrigen Vorlagen den
+   * Schlüssel nicht mitschreiben müssen.
+   */
+  archives: z.array(z.string()).optional(),
 });
 export type WorldDefinition = z.infer<typeof worldDefinitionSchema>;
 

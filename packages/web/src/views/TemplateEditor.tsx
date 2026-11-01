@@ -994,6 +994,18 @@ function WorldSection({
               onChange({ ...world, accept: v.split('\n').map((z) => z.trim()).filter(Boolean) })
             }
           />
+
+          <TextField
+            label="Archiv-Endungen"
+            value={(world.archives ?? []).join('\n')}
+            singleLine={false}
+            help="Endungen, die wie ein ZIP entpackt werden, etwa .mcworld bei Bedrock. .zip selbst muss hier nicht stehen."
+            onChange={(v) => {
+              const archives = v.split('\n').map((z) => z.trim()).filter(Boolean);
+              const { archives: _old, ...rest } = world;
+              onChange(archives.length > 0 ? { ...rest, archives } : rest);
+            }}
+          />
         </>
       )}
     </Section>

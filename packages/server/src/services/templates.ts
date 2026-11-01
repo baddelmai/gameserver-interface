@@ -55,6 +55,7 @@ export class TemplateService {
       ...this.migrateEnshroudedRolePermissions(now),
       ...this.migrateEnshroudedRoleRules(),
       ...this.migrateBedrockNetherNet(now),
+      ...this.migrateBedrockMcworld(),
     ];
     this.reload();
     return { seeded, backfilled, migrated };
@@ -250,6 +251,36 @@ export class TemplateService {
     }
 
     this.store.upsertTemplate('minecraft-bedrock', JSON.stringify(stored), true, now);
+    return ['minecraft-bedrock'];
+  }
+
+  /**
+   * Lässt eine bestehende Bedrock-Zeile `.mcworld`-Karten annehmen.
+   *
+   * Seeding fasst den vorhandenen Weltblock nie an, ohne diesen Schritt
+   * lehnte der Upload `.mcworld` auf jeder bestehenden Installation ab.
+   * Ergänzt wird nur der fehlende Schlüssel `archives`; eine Zeile, in der er
+   * schon steht — auch leer —, bleibt wie sie ist. `updated_at` bleibt stehen:
+   * der Container ändert sich nicht.
+   */
+  private migrateBedrockMcworld(): string[] {
+    const archives = BUILTIN_DEFINITIONS.find((d) => d.id === 'minecraft-bedrock')?.world?.archives;
+    if (!archives) return [];
+
+    const row = this.store.getTemplateRow('minecraft-bedrock');
+    if (!row || row.builtin !== 1) return [];
+
+    let stored: Record<string, unknown>;
+    try {
+      stored = JSON.parse(row.definition) as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+    const world = stored.world as Record<string, unknown> | undefined;
+    if (!world || 'archives' in world) return [];
+
+    world.archives = archives;
+    this.store.upsertTemplate('minecraft-bedrock', JSON.stringify(stored), true, row.updated_at);
     return ['minecraft-bedrock'];
   }
 
@@ -565,6 +596,15 @@ export class TemplateService {
       for (const [index, part] of world.parts.entries()) {
         if (/[\\/:]/.test(part.suffix)) {
           errors.push({ field: `world.parts.${index}`, message: 'Eine Endung darf keine Pfadanteile enthalten' });
+        }
+      }
+      for (const [index, ext] of (world.archives ?? []).entries()) {
+        if (!ext.startsWith('.')) {
+          errors.push({ field: `world.archives.${index}`, message: 'Endungen beginnen mit einem Punkt, etwa .mcworld' });
+        }
+        // Beides zugleich hieße: entpacken und nicht entpacken.
+        if (world.accept.includes(ext)) {
+          errors.push({ field: `world.archives.${index}`, message: `${ext} steht schon unter den rohen Endungen` });
         }
       }
       for (const [index, ext] of world.accept.entries()) {

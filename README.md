@@ -89,6 +89,9 @@ je Spieler). Router und Firewall müssen beides durchlassen. Das Feld
 `<public_ip>` für Spieler über das Internet, die LAN-IP des Hosts für ein
 reines Heimnetz.
 
+Bedrock-Karten lassen sich im Welt-Reiter direkt als `.mcworld` hochladen; sie
+ersetzen die bisherige Welt der Instanz.
+
 Hintergrund:
 
 - **Valheim** kennt weder RCON noch stdin-Befehle — Admin-Befehle gibt es nur
@@ -229,6 +232,13 @@ Jeder Snapshot lässt sich im Backup-Reiter herunterladen, etwa um ihn
 außerhalb des Hosts aufzubewahren. Entpacken lässt er sich mit
 `tar --zstd -xf <datei>.tar.zst` (Linux, macOS) oder unter Windows mit
 7-Zip-Zstandard.
+
+Ein heruntergeladenes Backup lässt sich mit „Backup hochladen…“ wieder
+einspielen: Es erscheint als Snapshot und wird erst mit „Restore“ übernommen.
+Angenommen werden nur Archive des Panels von derselben Vorlage, auch von einer
+anderen Instanz. Jeder Eintrag muss unter einem gesicherten Pfad liegen,
+Verweise werden abgelehnt. Die Größengrenze ist dieselbe wie beim
+Welt-Upload (`GSP_WORLD_UPLOAD_MAX_MB`).
 
 ## Dokumentation
 

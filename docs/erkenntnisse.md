@@ -1,6 +1,6 @@
 # Erkenntnisse für neue Sitzungen
 
-Lagebild der Codebasis, Stand 01.11.2026 (v0.4.0).
+Lagebild der Codebasis, Stand 01.11.2026 (v0.4.1).
 Ergänzt `CLAUDE.md`, ohne es zu wiederholen: dort stehen Befehle, Architektur und
 Fallstricke, hier das, was man beim Einarbeiten erst zusammensuchen muss.
 
@@ -220,3 +220,22 @@ Ungeprüft gegen einen echten Client: der Verbindungsaufbau über NetherNet
 selbst, `<public_ip>` hinter NAT (Router braucht Hairpin-NAT, wenn Spieler im
 eigenen Netz die öffentliche IP nutzen), und ob BDS 26.x die Log-Zeilen
 `Player connected:` und `Server started.` noch genauso schreibt.
+
+## Weltarchive und Backups von außen
+
+- **`world.archives`** (optional) nennt Endungen, die wie ein ZIP entpackt
+  werden. Das Gegenstück dazu ist `world.accept`, dessen Dateien roh als Welt
+  übernommen werden. Bedrock führt `.mcworld`;
+  `migrateBedrockMcworld()` ergänzt das bei bestehenden Installationen, ohne
+  `updated_at` zu ändern.
+- **Backup-Download:** `GET /api/instances/:id/backups/:backupId/download`
+  streamt das Archiv, wie beim Welt-Download.
+- **Backup-Upload:** `POST /api/instances/:id/backups/upload`
+  (`BackupService.importUpload()`) liest das Archiv vor der Übernahme
+  vollständig. Jeder Eintrag muss unter einem `backup.paths`-Pfad der Vorlage
+  liegen, relativ zur Instanzwurzel. Verweise, `..` und absolute Pfade werden
+  abgelehnt. Der Upload spielt nichts ein, sondern legt nur einen Snapshot
+  an; eingespielt wird mit „Restore“.
+- Die Backup-Liste im Frontend lädt neu, sobald ein Backup-Job fertig ist
+  (`backupsDone` in `App.tsx`). Vorher wurde sie geladen, bevor das Archiv
+  existierte.

@@ -262,6 +262,23 @@ describe('Vorlagendienst', () => {
     expect(store.getTemplateRow('minecraft-bedrock')?.updated_at).toBe(stamp);
   });
 
+  it('lässt eine bestehende Bedrock-Zeile .mcworld-Karten annehmen', () => {
+    const stamp = '2026-01-01T00:00:00.000Z';
+    const { archives: _archives, ...oldWorld } = minecraftBedrockDefinition.world!;
+    store.upsertTemplate(
+      'minecraft-bedrock',
+      JSON.stringify({ ...minecraftBedrockDefinition, world: oldWorld }),
+      true,
+      stamp,
+    );
+
+    const { migrated } = service.seedAndLoad();
+    expect(migrated).toContain('minecraft-bedrock');
+    expect(findTemplate('minecraft-bedrock')?.world?.archives).toEqual(['.mcworld']);
+    // Am Container ändert das nichts — kein grundloses „Neu aufbauen“.
+    expect(store.getTemplateRow('minecraft-bedrock')?.updated_at).toBe(stamp);
+  });
+
   it('lässt eigene Enshrouded-Rechte in Ruhe', () => {
     service.seedAndLoad();
     const own: TemplateDefinition = {
@@ -382,6 +399,18 @@ describe('Vorlagendienst', () => {
       expect(messages).toContain('Der Portbereich reicht über 65535 hinaus');
       expect(messages).toContain('Unbekannter Port „gibtsnicht“');
       expect(messages).toContain('Unbekanntes Feld „auchnicht“');
+    });
+
+    it('lehnt eine Endung ab, die zugleich roh und als Archiv gelten soll', () => {
+      const broken = customTemplate();
+      broken.world = {
+        parent: '/data', name: { kind: 'const', value: 'welt' },
+        parts: [{ suffix: '', type: 'dir', required: true }],
+        markers: [], accept: ['.mcworld'], archives: ['.mcworld', 'mcworld'],
+      };
+      const messages = catchValidation(() => service.create(broken)).fields.map((f) => f.message);
+      expect(messages).toContain('.mcworld steht schon unter den rohen Endungen');
+      expect(messages).toContain('Endungen beginnen mit einem Punkt, etwa .mcworld');
     });
 
     it('meldet Env-Verweise auf unbekannte Felder und Ports', () => {

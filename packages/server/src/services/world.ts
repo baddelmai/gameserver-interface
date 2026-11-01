@@ -132,7 +132,7 @@ export class WorldService {
       modifiedAt: newest === null ? null : new Date(newest).toISOString(),
       raw: raw,
       downloadName: this.downloadName(instance, target, raw),
-      accept: [...new Set([...target.accept, '.zip'])],
+      accept: uploadExtensions(target),
       maxUploadBytes: this.config.worldUploadMaxBytes,
     };
   }
@@ -182,7 +182,7 @@ export class WorldService {
   ): Promise<{ path: string; fileName: string; ext: string }> {
     const clean = basename(fileName);
     const ext = extname(clean).toLowerCase();
-    const allowed = [...new Set([...target.accept, '.zip'])];
+    const allowed = uploadExtensions(target);
     if (!allowed.includes(ext)) {
       throw new WorldError(`Für dieses Spiel sind nur ${allowed.join(', ')} zulässig`);
     }
@@ -278,6 +278,14 @@ export class WorldService {
       await rm(staging, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * Was der Upload annimmt: rohe Weltdateien (`accept`), ZIP und die Endungen,
+ * die nur anders benannte ZIPs sind (`archives`, etwa `.mcworld`).
+ */
+function uploadExtensions(target: WorldTarget): string[] {
+  return [...new Set([...target.accept, '.zip', ...target.archives])];
 }
 
 /**
