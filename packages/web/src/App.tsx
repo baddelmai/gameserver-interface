@@ -70,6 +70,9 @@ function Panel({ session, onLogout }: { session: SessionInfo; onLogout: () => vo
   const [backups, setBackups] = useState<Backup[]>([]);
   const [mods, setMods] = useState<Mod[]>([]);
   const [world, setWorld] = useState<WorldInfo | null>(null);
+  // Zählt fertige Backup-Jobs. Die Liste wurde sonst direkt nach dem Start des
+  // Jobs geladen — bevor es das Archiv gab — und zeigte es nie.
+  const [backupsDone, setBackupsDone] = useState(0);
   // Vorgabe des Sicherungsschalters im Austauschdialog.
   const [worldBackup, setWeltSicherung] = useState(true);
   const [dialogOpen, setDialogOffen] = useState(false);
@@ -146,6 +149,7 @@ function Panel({ session, onLogout }: { session: SessionInfo; onLogout: () => vo
         if (job.instanceId) {
           setJobs((alt) => ({ ...alt, [job.instanceId as string]: job }));
         }
+        if (job.kind === 'backup' && job.status === 'done') setBackupsDone((n) => n + 1);
         if (job.status === 'failed') {
           setMessage(`${job.kind}: ${job.error ?? 'fehlgeschlagen'}`);
         }
@@ -180,7 +184,7 @@ function Panel({ session, onLogout }: { session: SessionInfo; onLogout: () => vo
     if (tab === 'welt') {
       void api.world(instance.id).then((a) => setWorld(a.world)).catch(() => setWorld(null));
     }
-  }, [tab, instance?.id]);
+  }, [tab, instance?.id, backupsDone]);
 
   /** Führt eine Aktion aus, zeigt Fehler an und lädt die Instanzen neu. */
   const run = useCallback(
@@ -377,6 +381,7 @@ function Panel({ session, onLogout }: { session: SessionInfo; onLogout: () => vo
                   instance={instance}
                   backups={backups}
                   busy={busy}
+                  downloadUrl={(backup) => api.backupDownloadUrl(instance.id, backup.id)}
                   onUpdate={() => void run(() => api.update(instance.id))}
                   onCreate={() =>
                     void run(

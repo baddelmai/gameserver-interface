@@ -225,6 +225,11 @@ Aufbewahrungsfrist entfernt nur automatische Snapshots, manuelle bleiben
 erhalten. Eine Wiederherstellung stoppt die Instanz, ersetzt die Weltdaten und
 startet sie danach wieder.
 
+Jeder Snapshot lässt sich im Backup-Reiter herunterladen, etwa um ihn
+außerhalb des Hosts aufzubewahren. Entpacken lässt er sich mit
+`tar --zstd -xf <datei>.tar.zst` (Linux, macOS) oder unter Windows mit
+7-Zip-Zstandard.
+
 ## Dokumentation
 
 - `CLAUDE.md` — Einstieg für KI-Agenten: Befehle, Architektur, Fallstricke

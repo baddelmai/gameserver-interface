@@ -292,6 +292,24 @@ describe('API-Durchlauf', () => {
     // Dateiname nach dem Muster aus dem Design.
     expect(backup.file).toMatch(/^nordheim-\d{4}-\d{2}-\d{2}-\d{4}-manuell\.tar\.zst$/);
 
+    // Herunterladen liefert das Archiv selbst, unter seinem Dateinamen.
+    const download = await app.server.inject({
+      method: 'GET',
+      url: `/api/instances/${instanceId}/backups/${backup.id}/download`,
+      headers: headersFor(false),
+    });
+    expect(download.statusCode).toBe(200);
+    expect(String(download.headers['content-disposition'])).toContain(backup.file);
+    // Ein zstd-Rahmen beginnt mit der Signatur 28 B5 2F FD.
+    expect(download.rawPayload.subarray(0, 4)).toEqual(Buffer.from([0x28, 0xb5, 0x2f, 0xfd]));
+
+    const unknown = await app.server.inject({
+      method: 'GET',
+      url: `/api/instances/${instanceId}/backups/gibtsnicht/download`,
+      headers: headersFor(false),
+    });
+    expect(unknown.statusCode).toBe(404);
+
     // Welt löschen und aus dem Backup zurückholen.
     rmSync(worldDir, { recursive: true, force: true });
     const restored = await app.server.inject({

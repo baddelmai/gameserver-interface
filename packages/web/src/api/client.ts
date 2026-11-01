@@ -159,6 +159,8 @@ export const api = {
   createBackup: (id: string) => request<{ job: Job }>(`/api/instances/${id}/backups`, { method: 'POST' }),
   restoreBackup: (id: string, backupId: string) =>
     request<{ job: Job }>(`/api/instances/${id}/backups/${backupId}/restore`, { method: 'POST' }),
+  /** Nur die URL — aus demselben Grund wie bei `worldDownloadUrl`. */
+  backupDownloadUrl: (id: string, backupId: string) => `/api/instances/${id}/backups/${backupId}/download`,
   deleteBackup: (id: string, backupId: string) =>
     request<{ ok: true }>(`/api/instances/${id}/backups/${backupId}`, { method: 'DELETE' }),
 

@@ -5,6 +5,7 @@ export function Backups({
   instance,
   backups,
   busy,
+  downloadUrl,
   onUpdate,
   onCreate,
   onRestore,
@@ -13,6 +14,7 @@ export function Backups({
   instance: Instance;
   backups: Backup[];
   busy: boolean;
+  downloadUrl: (backup: Backup) => string;
   onUpdate: () => void;
   onCreate: () => void;
   onRestore: (backup: Backup) => void;
@@ -70,6 +72,11 @@ export function Backups({
               >
                 Restore
               </button>
+              {/* Ein Link statt eines Knopfes, damit der Browser die Datei
+                  selbst auf die Platte streamt. */}
+              <a className="button button--small" href={downloadUrl(backup)} download={backup.file}>
+                Download
+              </a>
               <button
                 type="button"
                 className="button button--small button--small-danger"
@@ -83,6 +90,8 @@ export function Backups({
         </div>
         <p className="hint">
           Eine Wiederherstellung stoppt die Instanz, ersetzt die Weltdaten und startet sie danach wieder.
+          Heruntergeladene Snapshots sind tar-Archive mit zstd-Kompression; entpacken lassen sie sich
+          mit <code>tar --zstd -xf</code> unter Linux und macOS oder unter Windows mit 7-Zip-Zstandard.
         </p>
       </section>
     </div>
