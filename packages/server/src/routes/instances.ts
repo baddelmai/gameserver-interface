@@ -268,6 +268,32 @@ export async function instanceRoutes(app: FastifyInstance, deps: Deps): Promise<
     },
   );
 
+  /**
+   * Ein Backup herunterladen — etwa um es außerhalb des Hosts aufzubewahren.
+   * Wie der Welt-Download eine GET-Route, die der Browser selbst streamt:
+   * Archive mit mehreren Gigabyte gehören nicht in den Speicher des Tabs.
+   */
+  app.get<{ Params: { id: string; backupId: string } }>(
+    '/api/instances/:id/backups/:backupId/download',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const instance = need(request.params.id);
+      const backup = store.getBackup(instance.id, request.params.backupId);
+      if (!backup) return reply.code(404).send({ error: 'Backup nicht gefunden' });
+
+      const path = backups.fileFor(instance.id, backup.file);
+      const info = path ? await stat(path).catch(() => null) : null;
+      if (!path || !info?.isFile()) {
+        return reply.code(404).send({ error: 'Die Archivdatei fehlt auf der Platte' });
+      }
+
+      reply.header('content-type', 'application/zstd');
+      reply.header('content-length', String(info.size));
+      reply.header('content-disposition', attachment(backup.file));
+      return reply.send(createReadStream(path));
+    },
+  );
+
   app.delete<{ Params: { id: string; backupId: string } }>(
     '/api/instances/:id/backups/:backupId',
     async (request) => {
